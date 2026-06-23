@@ -57,6 +57,22 @@ import {
   Grid,
   Flag,
   Unlock,
+  Upload,
+  Link2,
+  Eye,
+  Tag,
+  Trash2,
+  Paperclip,
+  ThumbsUp,
+  Bell,
+  Award,
+  CheckSquare,
+  Layers,
+  UserPlus,
+  Percent,
+  Pencil,
+  CheckCheck,
+  ListTodo,
 } from 'lucide-react';
 import { 
   Chart as ChartJS, 
@@ -98,8 +114,68 @@ import {
 } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from './lib/utils';
-import { EMPLOYEES, COMPANY_GOALS, REVIEW_CYCLES, FEEDBACK } from './data/mockData';
-import { Status } from './types';
+import { EMPLOYEES, COMPANY_GOALS, REVIEW_CYCLES, FEEDBACK, MY_GOALS, GOAL_TYPES, SCYNE_VALUES, GOAL_VISIBILITY_OPTIONS, PROGRESS_STATUSES, SKILLS_PASSPORT, D365_IMPORT_GOALS, ROLE_PROFILES, COMPETENCIES, FEEDBACK_REQUESTS, REMINDER_SCHEDULE, NOTIFICATIONS, TASKS, FEEDBACK_THEMES } from './data/mockData';
+import { Status, Goal } from './types';
+
+// --- Shared small UI helpers ---
+
+const fmtDate = (iso: string) => {
+  const d = new Date(iso + (iso.length === 10 ? 'T00:00:00' : ''));
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+// Risk evaluation for a goal vs a reference "today" (REQ1 Deadlines & Risk Indicators)
+const TODAY = new Date('2026-06-23');
+const goalRisk = (goal: Goal): { atRisk: boolean; overdue: boolean; label: string } => {
+  if (goal.status === 'Completed' || goal.status === 'Cancelled') return { atRisk: false, overdue: false, label: '' };
+  const due = new Date(goal.dueDate + 'T00:00:00');
+  const days = Math.ceil((due.getTime() - TODAY.getTime()) / (1000 * 60 * 60 * 24));
+  if (days < 0) return { atRisk: true, overdue: true, label: `Overdue by ${Math.abs(days)}d` };
+  if (days <= 30 && goal.progress < 60) return { atRisk: true, overdue: false, label: `Due in ${days}d • ${goal.progress}%` };
+  return { atRisk: false, overdue: false, label: '' };
+};
+
+// Active enforcement rules per visibility level (REQ1 #484)
+const VISIBILITY_RULES: Record<string, string[]> = {
+  'Owner Only': ['Hidden from People & Project Leaders', 'Excluded from manager review screens', 'Excluded from reporting & org search'],
+  'People Leader': ['Visible in your goal profile', 'People Leader can review progress & comment', 'Auto-transfers if reporting line changes'],
+  'Project Leader': ['Project Leaders can view & give feedback', 'Access auto-revoked when PL is unassigned'],
+  'Org Hierarchy': ['Visible to authorised leaders above your grade', 'Supports succession & talent planning'],
+  'Public': ['Shown on your development profile', 'Discoverable in search', 'Others can view but cannot edit'],
+};
+
+const VisibilityRules = ({ visibility }: { visibility: string }) => (
+  <ul className="space-y-1">
+    {(VISIBILITY_RULES[visibility] || []).map((r) => (
+      <li key={r} className="flex items-start gap-1.5 text-[11px] text-muted-text">
+        <Check size={11} className="text-green-600 mt-0.5 flex-shrink-0" />{r}
+      </li>
+    ))}
+  </ul>
+);
+
+// Multi-select chip group used across goal forms
+const ChipMultiSelect = ({ options, selected, onToggle }: { options: string[]; selected: string[]; onToggle: (v: string) => void }) => (
+  <div className="flex flex-wrap gap-2">
+    {options.map((opt) => {
+      const active = selected.includes(opt);
+      return (
+        <button
+          key={opt}
+          type="button"
+          onClick={() => onToggle(opt)}
+          className={cn(
+            'px-2.5 py-1 rounded-full border text-[11px] font-medium transition-all',
+            active ? 'bg-indigo-50 border-indigo-400 text-indigo-700' : 'bg-white border-border text-muted-text hover:bg-gray-50'
+          )}
+        >
+          {active && <Check size={11} className="inline mr-1 -mt-0.5" />}
+          {opt}
+        </button>
+      );
+    })}
+  </div>
+);
 
 // --- Chatbot Constants ---
 const CHIP_RESPONSES: Record<string, string> = {
@@ -151,10 +227,22 @@ const Badge = ({ status }: { status: string }) => {
     'Aligned': 'bg-green-100 text-green-700',
     'Partial': 'bg-amber-100 text-amber-700',
     'Not Aligned': 'bg-red-100 text-red-700',
+    'Not Started': 'bg-gray-100 text-gray-600',
+    'On Track': 'bg-green-100 text-green-700',
+    'Needs Improvement': 'bg-amber-100 text-amber-700',
+    'Cancelled': 'bg-gray-200 text-gray-500',
+    'Pending Approval': 'bg-indigo-50 text-indigo-700',
+    'Approved': 'bg-green-100 text-green-700',
+    'Rejected': 'bg-red-100 text-red-700',
+    'Changes Requested': 'bg-amber-100 text-amber-700',
+    'Overdue': 'bg-red-100 text-red-700',
+    'Submitted': 'bg-blue-100 text-blue-700',
+    'Acknowledged': 'bg-green-100 text-green-700',
+    'Upcoming': 'bg-blue-100 text-blue-700',
   };
 
-  const isPulse = status === 'In Progress';
-  const isStatic = status === 'Completed' || status === 'Calibration';
+  const isPulse = status === 'In Progress' || status === 'On Track';
+  const isStatic = status === 'Completed' || status === 'Calibration' || status === 'Approved';
 
   return (
     <span className={cn('badge', styles[status] || 'bg-gray-100 text-gray-600', isPulse && 'border')}>
@@ -266,7 +354,7 @@ const RatingHeatmap = () => {
   ];
 
   const data = [
-    { label: 'Participants', color: '#3B4FD8', scores: [5, 2, 3, 4, 3] },
+    { label: 'Participants', color: '#464E7E', scores: [5, 2, 3, 4, 3] },
     { label: 'Peers', color: '#7C3AED', scores: [3, 3, 4, 3, 4] },
     { label: 'Managers', color: '#F43F5E', scores: [4, 5, 4, 3, 5] },
   ];
@@ -336,7 +424,7 @@ const NineBoxGrid = () => {
     { label: "Solid performer", bg: "#E0F2FE", color: "#0891B2", employees: 3 },
   ];
 
-  const employeeColors = ["#3B4FD8", "#7C3AED", "#059669", "#D97706", "#DC2626", "#0891B2", "#BE185D", "#0D9488"];
+  const employeeColors = ["#464E7E", "#7C3AED", "#059669", "#D97706", "#DC2626", "#0891B2", "#BE185D", "#0D9488"];
 
   return (
     <div className="relative">
@@ -535,13 +623,13 @@ const TimelineView = () => {
 
   const getDotColor = (type: string) => {
     switch (type) {
-      case 'created': return '#3B4FD8';
+      case 'created': return '#464E7E';
       case 'self': return '#16A34A';
       case 'manager': return '#3B82F6';
       case 'peer': return '#14B8A6';
       case 'reminder': return '#D97706';
       case 'calibration': return '#7C3AED';
-      default: return '#3B4FD8';
+      default: return '#464E7E';
     }
   };
 
@@ -570,8 +658,8 @@ const TimelineView = () => {
 
 const ReviewTasksPanel = ({ onTaskClick }: { onTaskClick: (name: string) => void }) => {
   const tasks = [
-    { name: 'Esther Howard', role: 'Engineering Team Lead', type: 'Manager review', color: '#EEF2FF', text: '#3B4FD8' },
-    { name: 'Jane Cooper', role: 'Software Engineer', type: 'Manager review', color: '#EEF2FF', text: '#3B4FD8' },
+    { name: 'Esther Howard', role: 'Engineering Team Lead', type: 'Manager review', color: '#EEF2FF', text: '#464E7E' },
+    { name: 'Jane Cooper', role: 'Software Engineer', type: 'Manager review', color: '#EEF2FF', text: '#464E7E' },
     { name: 'Ella Smith', role: 'Frontend Developer', type: 'Peer review', color: '#F0FDF4', text: '#16A34A' },
     { name: 'Liam Brown', role: 'UI Designer', type: 'Peer review', color: '#F0FDF4', text: '#16A34A' },
     { name: 'Olivia Davis', role: 'Product Manager', type: 'Upward review', color: '#FFF7ED', text: '#D97706' },
@@ -1035,263 +1123,384 @@ const IndividualReviewWorkspaceView = ({
   );
 };
 
-const MeritCyclesView = ({ setActiveView }: { setActiveView: (view: string) => void }) => {
-  const meritCycles = [
-    { id: 1, name: 'FY 2025–26 Merit', linkedCycle: 'FY 2025–26 Year-End', budget: '$280,000', allocated: '$196,000', remaining: '$84,000', status: 'Active' },
-  ];
+// --- Request Feedback Modal (REQ2 #493) ---
+const RequestFeedbackModal = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
+  const [respondents, setRespondents] = useState<string[]>([]);
+  const [search, setSearch] = useState('');
+  const [scope, setScope] = useState('');
+  const [linkedRoles, setLinkedRoles] = useState<string[]>([]);
+  const [competencies, setCompetencies] = useState<string[]>([]);
+  const [linkedGoals, setLinkedGoals] = useState<string[]>([]);
+  const [context, setContext] = useState('');
+  const [dueDate, setDueDate] = useState('2026-07-03');
+  const [visibility, setVisibility] = useState('Requestor + Respondent + direct TL');
+  const [done, setDone] = useState(false);
+
+  const toggle = (setter: React.Dispatch<React.SetStateAction<string[]>>) => (v: string) =>
+    setter((p) => (p.includes(v) ? p.filter((x) => x !== v) : [...p, v]));
+
+  const matches = search ? EMPLOYEES.filter((e) => e.name.toLowerCase().includes(search.toLowerCase()) || e.role.toLowerCase().includes(search.toLowerCase())) : [];
+
+  const reset = () => { setDone(false); onClose(); };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h3 className="text-[18px] font-bold">Merit Cycles</h3>
-        <button className="btn-primary">+ Create Merit Cycle</button>
-      </div>
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={reset} className="fixed inset-0 bg-black/30 z-40 backdrop-blur-sm" />
+          <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }} className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[560px] bg-white rounded-[8px] shadow-xl z-50 flex flex-col max-h-[88vh]">
+            <div className="p-5 border-b border-border flex items-center justify-between">
+              <div className="flex items-center gap-2"><Send size={16} className="text-primary-action" /><h3 className="font-bold text-[15px]">Request Feedback</h3></div>
+              <button onClick={reset} className="text-muted-text hover:text-primary-text"><X size={18} /></button>
+            </div>
 
-      <div className="card p-0 overflow-hidden">
-        <table className="w-full border-collapse">
-          <thead>
-            <tr>
-              <th className="table-header">#</th>
-              <th className="table-header">Cycle Name</th>
-              <th className="table-header">Linked Review Cycle</th>
-              <th className="table-header">Budget</th>
-              <th className="table-header">Allocated</th>
-              <th className="table-header">Remaining</th>
-              <th className="table-header">Status</th>
-              <th className="table-header">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {meritCycles.map((cycle) => (
-              <tr key={cycle.id} className="hover:bg-gray-50 transition-colors">
-                <td className="table-cell text-muted-text">{cycle.id}</td>
-                <td className="table-cell font-medium">
-                  <button onClick={() => setActiveView('MeritCycleDetail')} className="text-primary-action hover:underline">
-                    {cycle.name}
-                  </button>
-                </td>
-                <td className="table-cell text-muted-text">{cycle.linkedCycle}</td>
-                <td className="table-cell font-bold">{cycle.budget}</td>
-                <td className="table-cell text-green-600 font-bold">{cycle.allocated}</td>
-                <td className="table-cell text-muted-text">{cycle.remaining}</td>
-                <td className="table-cell"><Badge status={cycle.status} /></td>
-                <td className="table-cell"><MoreVertical size={14} className="text-muted-text cursor-pointer" /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+            {!done ? (
+              <>
+                <div className="p-5 overflow-y-auto space-y-5">
+                  {/* Respondents typeahead (#493) */}
+                  <div className="space-y-2">
+                    <label className="text-[12px] font-bold">Respondents <span className="text-muted-text font-normal">(by name or role — TL, PM, Lead)</span></label>
+                    {respondents.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {respondents.map((r) => (
+                          <span key={r} className="text-[11px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full flex items-center gap-1">{r}<button onClick={() => toggle(setRespondents)(r)}><X size={10} /></button></span>
+                        ))}
+                      </div>
+                    )}
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-text" size={14} />
+                      <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search org directory…" className="w-full border border-border rounded-[4px] pl-9 pr-4 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
+                    </div>
+                    {matches.length > 0 && (
+                      <div className="border border-border rounded-[4px] divide-y divide-border max-h-40 overflow-y-auto">
+                        {matches.map((e) => (
+                          <button key={e.id} onClick={() => { toggle(setRespondents)(e.name); setSearch(''); }} className="w-full flex items-center gap-2 p-2 hover:bg-gray-50 text-left">
+                            <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-bold">{e.avatar}</div>
+                            <span className="text-[12px] font-medium">{e.name}</span>
+                            <span className="text-[11px] text-muted-text">{e.role}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Scope: work period / project + link roles & experiences */}
+                  <div className="space-y-2">
+                    <label className="text-[12px] font-bold">Scope — Work period / project / context</label>
+                    <input value={scope} onChange={(e) => setScope(e.target.value)} placeholder="e.g. Q2 Mobile Launch" className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
+                    <span className="text-[10px] uppercase tracking-wider text-muted-text">Link roles &amp; experiences from profile</span>
+                    <ChipMultiSelect options={SKILLS_PASSPORT['Roles & Experience']} selected={linkedRoles} onToggle={toggle(setLinkedRoles)} />
+                  </div>
+
+                  {/* Competencies / goals to assess */}
+                  <div className="space-y-2">
+                    <label className="text-[12px] font-bold">Competencies to assess</label>
+                    <ChipMultiSelect options={COMPETENCIES} selected={competencies} onToggle={toggle(setCompetencies)} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[12px] font-bold">Goals to assess</label>
+                    <ChipMultiSelect options={MY_GOALS.map((g) => g.title)} selected={linkedGoals} onToggle={toggle(setLinkedGoals)} />
+                  </div>
+
+                  {/* Free text context */}
+                  <div className="space-y-2">
+                    <label className="text-[12px] font-bold">Context to guide feedback <span className="text-muted-text font-normal">(optional)</span></label>
+                    <textarea value={context} onChange={(e) => setContext(e.target.value)} rows={2} placeholder="What should respondents focus on?" className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[12px] font-bold">Due date <span className="text-muted-text font-normal">(policy: 7–10 days)</span></label>
+                      <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[12px] font-bold">Visibility</label>
+                      <select value={visibility} onChange={(e) => setVisibility(e.target.value)} className="w-full border border-border rounded-[4px] px-3 py-2 text-[12px] focus:outline-none focus:ring-1 focus:ring-primary-action">
+                        <option>Requestor + Respondent + direct TL</option>
+                        <option>Requestor + Respondent</option>
+                        <option>Requestor only</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+                <div className="p-5 border-t border-border flex items-center justify-between">
+                  <span className="text-[11px] text-muted-text">{respondents.length} respondent(s)</span>
+                  <div className="flex gap-2">
+                    <button onClick={reset} className="btn-outline">Cancel</button>
+                    <button onClick={() => setDone(true)} disabled={respondents.length === 0} className="btn-primary flex items-center gap-2"><Send size={14} /> Send Request</button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="p-8 flex flex-col items-center text-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-green-100 text-green-600 flex items-center justify-center"><CheckCircle2 size={24} /></div>
+                <h3 className="font-bold text-[15px]">Request sent</h3>
+                <p className="text-[12px] text-muted-text max-w-xs">A task (email + in-app) was created for {respondents.length} respondent(s) with the context summary, due date ({fmtDate(dueDate)}) and a Start-form link.</p>
+                <button onClick={reset} className="btn-primary mt-2">Done</button>
+              </div>
+            )}
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
   );
 };
 
-const MeritCycleDetailView = ({ onBack }: { onBack: () => void }) => {
-  const [expandedManager, setExpandedManager] = useState<string | null>(null);
+// --- Scyne 360 Structured Feedback Form (REQ2 #495) ---
+const Scyne360FormModal = ({ open, onClose, requestFrom }: { open: boolean; onClose: () => void; requestFrom?: string }) => {
+  const [ratings, setRatings] = useState<Record<string, number>>({});
+  const [comments, setComments] = useState('');
+  const [attachment, setAttachment] = useState('');
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [showValidation, setShowValidation] = useState(false);
+  const comps = COMPETENCIES.slice(0, 4);
+  const complete = comps.every((c) => ratings[c]) && comments.trim().length > 0;
+  const [audit, setAudit] = useState<string[]>(['Opened — 09:02']);
 
-  const managers = [
-    { name: 'Alex Reid', teamSize: 8, budget: '$64,000', recommended: '$58,000', actual: '$61,500', status: 'Submitted' },
-    { name: 'Priya B', teamSize: 6, budget: '$48,000', recommended: '$42,000', actual: '$49,200', status: 'Over Budget' },
-    { name: 'Nik Maniya', teamSize: 5, budget: '$40,000', recommended: '$35,000', actual: '$32,000', status: 'In Progress' },
-  ];
-
-  const teamMembers = [
-    { name: 'Sarah Chen', rating: 'Strong', salary: '$95,000', compa: '0.94', recommended: '5%', proposed: '6%', amount: '$5,700', status: 'Submitted' },
-    { name: 'Ben Scyne', rating: 'Strong', salary: '$110,000', compa: '1.08', recommended: '5%', proposed: '5%', amount: '$5,500', status: 'Submitted' },
-  ];
+  const saveDraft = () => { setSavedAt('just now'); setAudit((p) => [...p, 'Saved draft — 09:06']); };
+  const submit = () => {
+    if (!complete) { setShowValidation(true); return; }
+    setAudit((p) => [...p, 'Submitted — 09:09']);
+    onClose();
+  };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-2 text-muted-text text-[12px]">
-        <button onClick={onBack} className="hover:text-primary-text">Merit Cycles</button>
-        <ChevronRight size={12} />
-        <span className="text-primary-text font-medium">FY 2025–26 Merit</span>
-      </div>
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 bg-black/30 z-40 backdrop-blur-sm" />
+          <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }} className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[600px] bg-white rounded-[8px] shadow-xl z-50 flex flex-col max-h-[90vh]">
+            <div className="p-5 border-b border-border flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-[15px]">Scyne 360° Feedback Form</h3>
+                <p className="text-[11px] text-muted-text">For {requestFrom || 'Sarah Chen'} • Est. 8 min to complete</p>
+              </div>
+              <button onClick={onClose} className="text-muted-text hover:text-primary-text"><X size={18} /></button>
+            </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        {[
-          { label: 'Total Budget', value: '$280,000' },
-          { label: 'Allocated', value: '$196,000', color: 'text-green-600' },
-          { label: 'Remaining', value: '$84,000' },
-          { label: 'Managers Done', value: '6 / 9' },
-        ].map((stat, i) => (
-          <div key={i} className="card">
-            <p className="text-[11px] text-muted-text uppercase font-bold tracking-tight">{stat.label}</p>
-            <p className={cn("text-[20px] font-bold mt-1", stat.color)}>{stat.value}</p>
-          </div>
+            {/* privacy notice (#495) */}
+            <div className="px-5 py-2 bg-indigo-50/60 border-b border-indigo-100 flex items-center gap-2 text-[11px] text-indigo-800">
+              <Eye size={13} /> Your name <strong>will be visible</strong> to the requestor. Scores are shared per request policy.
+            </div>
+
+            <div className="p-5 overflow-y-auto space-y-5">
+              {comps.map((c) => (
+                <div key={c} className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[12px] font-bold">{c} <span className="text-red-500">*</span></label>
+                    {showValidation && !ratings[c] && <span className="text-[10px] text-red-500">Required</span>}
+                  </div>
+                  <div className="flex gap-1.5">
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <button key={n} onClick={() => setRatings((p) => ({ ...p, [c]: n }))} className={cn('w-9 h-9 rounded-[4px] border text-[12px] font-bold transition-all', ratings[c] === n ? 'bg-primary-action text-white border-primary-action' : 'bg-white border-border text-muted-text hover:bg-gray-50')}>{n}</button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              <div className="space-y-1.5">
+                <label className="text-[12px] font-bold">Comments <span className="text-red-500">*</span></label>
+                {showValidation && !comments.trim() && <span className="text-[10px] text-red-500 block">Required</span>}
+                <textarea value={comments} onChange={(e) => setComments(e.target.value)} rows={3} placeholder="Specific, behavioural examples…" className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
+              </div>
+
+              {/* Attachment (#495) */}
+              <div className="space-y-1.5">
+                <label className="text-[12px] font-bold">Attachment <span className="text-muted-text font-normal">(optional — PDF/PNG, max 5MB)</span></label>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setAttachment('evidence.pdf')} className="btn-outline flex items-center gap-2"><Paperclip size={13} /> Attach file</button>
+                  {attachment && <span className="text-[12px] text-muted-text flex items-center gap-1">{attachment}<button onClick={() => setAttachment('')}><X size={12} /></button></span>}
+                </div>
+              </div>
+
+              {/* Audit events (#495) */}
+              <div className="text-[10px] text-muted-text border-t border-border pt-2">
+                Audit: {audit.join(' · ')}
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-border flex items-center justify-between">
+              <span className="text-[11px] text-muted-text flex items-center gap-1">{savedAt ? <><Check size={12} className="text-green-600" /> Autosaved {savedAt}</> : 'Not saved'}</span>
+              <div className="flex gap-2">
+                <button onClick={saveDraft} className="btn-outline flex items-center gap-2"><Save size={13} /> Save Draft</button>
+                <button onClick={submit} className="btn-primary flex items-center gap-2"><Send size={13} /> Submit</button>
+              </div>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+};
+
+// --- Feedback Insights Dashboard + Benchmarks (REQ2 #497, #498) ---
+const FeedbackInsightsView = () => {
+  const [role, setRole] = useState('Requestor');
+  const heat = [
+    { name: 'Client Impact', Eng: 4.1, Prod: 4.5, Sales: 3.9 },
+    { name: 'Collaboration', Eng: 4.4, Prod: 4.2, Sales: 4.0 },
+    { name: 'Technical', Eng: 4.6, Prod: 3.8, Sales: 3.2 },
+    { name: 'Communication', Eng: 3.7, Prod: 4.3, Sales: 4.4 },
+  ];
+  const dist = [
+    { rating: '1', count: 2 }, { rating: '2', count: 6 }, { rating: '3', count: 18 }, { rating: '4', count: 34 }, { rating: '5', count: 21 },
+  ];
+  const benchmarks = [
+    { comp: 'Client Impact', you: 65, band: [40, 80] },
+    { comp: 'Collaboration', you: 82, band: [45, 85] },
+    { comp: 'Technical Execution', you: 71, band: [50, 90] },
+    { comp: 'Communication', you: 48, band: [35, 75] },
+  ];
+  const heatColor = (v: number) => v >= 4.4 ? 'bg-green-500' : v >= 4.0 ? 'bg-green-300' : v >= 3.5 ? 'bg-amber-300' : 'bg-red-300';
+
+  return (
+    <div className="space-y-5">
+      {/* Role-appropriate dashboard toggle + filters */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex gap-1.5">
+          {['Requestor', 'TL / Lead', 'HR / Admin'].map((r) => (
+            <button key={r} onClick={() => setRole(r)} className={cn('px-3 py-1.5 rounded-[4px] border text-[12px] font-medium', role === r ? 'bg-indigo-50 border-primary-action text-primary-action' : 'bg-white border-border text-muted-text hover:bg-gray-50')}>{r}</button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <button className="btn-outline flex items-center gap-1.5"><Filter size={13} /> Filters</button>
+          <button className="btn-outline flex items-center gap-1.5"><Download size={13} /> Export CSV</button>
+          <button className="btn-outline flex items-center gap-1.5"><Download size={13} /> Export XLSX</button>
+          <button className="btn-outline flex items-center gap-1.5"><Download size={13} /> Export PDF</button>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {['Date range', 'Project', 'Role', 'Team', 'Competency', 'Location'].map((f) => (
+          <span key={f} className="text-[11px] bg-gray-50 border border-border rounded-full px-2.5 py-1 text-muted-text">{f}: All</span>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-9 space-y-6">
-          <div className="bg-indigo-600 rounded-[4px] p-6 text-white relative overflow-hidden">
-            <div className="relative z-10">
-              <div className="flex justify-between items-start mb-4">
-                <h3 className="text-[16px] font-bold">Merit Guidelines — Active</h3>
-                <button className="text-[11px] underline opacity-80 hover:opacity-100">Edit Guidelines</button>
-              </div>
-              <div className="grid grid-cols-5 gap-4">
-                {[
-                  { label: 'Exceptional', range: '8–12%' },
-                  { label: 'Strong', range: '4–7%' },
-                  { label: 'Meets', range: '1–3%' },
-                  { label: 'Needs Imp.', range: '0%' },
-                  { label: 'Unsatisfactory', range: '0%' },
-                ].map((g, i) => (
-                  <div key={i} className="bg-white/10 rounded p-2 border border-white/20">
-                    <p className="text-[10px] font-bold uppercase opacity-80">{g.label}</p>
-                    <p className="text-[14px] font-bold">{g.range}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16" />
-          </div>
+      {/* Scorecards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { label: role === 'HR / Admin' ? 'Completion SLA' : 'Completion', value: '78%' },
+          { label: 'Avg Rating', value: '4.2' },
+          { label: 'Responses', value: '81' },
+          { label: 'Overdue', value: '4' },
+        ].map((s, i) => (
+          <div key={i} className="card"><span className="text-[11px] text-muted-text uppercase tracking-tight">{s.label}</span><div className="text-[20px] font-bold mt-1">{s.value}</div></div>
+        ))}
+      </div>
 
-          <div className="card p-0 overflow-hidden">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr>
-                  <th className="table-header">Manager</th>
-                  <th className="table-header">Team Size</th>
-                  <th className="table-header">Budget Allocated</th>
-                  <th className="table-header">Recommended Spend</th>
-                  <th className="table-header">Actual Spend</th>
-                  <th className="table-header">Status</th>
-                  <th className="table-header">Action</th>
-                </tr>
-              </thead>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Competency heatmap */}
+        <div className="card space-y-3">
+          <h3 className="font-semibold text-[14px]">Competency Heatmap {role === 'Requestor' ? '(You)' : '(by Team)'}</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-[11px]">
+              <thead><tr><th className="text-left p-1.5 text-muted-text">Competency</th><th className="p-1.5 text-muted-text">Eng</th><th className="p-1.5 text-muted-text">Prod</th><th className="p-1.5 text-muted-text">Sales</th></tr></thead>
               <tbody>
-                {managers.map((mgr) => (
-                  <React.Fragment key={mgr.name}>
-                    <tr 
-                      className={cn(
-                        "hover:bg-gray-50 transition-colors cursor-pointer",
-                        expandedManager === mgr.name && "bg-indigo-50/30"
-                      )}
-                      onClick={() => setExpandedManager(expandedManager === mgr.name ? null : mgr.name)}
-                    >
-                      <td className="table-cell font-medium flex items-center gap-2">
-                        <ChevronRight size={14} className={cn("transition-transform", expandedManager === mgr.name && "rotate-90")} />
-                        {mgr.name}
-                      </td>
-                      <td className="table-cell text-muted-text">{mgr.teamSize}</td>
-                      <td className="table-cell font-bold">{mgr.budget}</td>
-                      <td className="table-cell text-muted-text">{mgr.recommended}</td>
-                      <td className={cn("table-cell font-bold", mgr.status === 'Over Budget' && "text-red-600")}>
-                        {mgr.actual}
-                        {mgr.status === 'Over Budget' && <span className="ml-2 text-[10px] uppercase">⚠️ Over Budget</span>}
-                      </td>
-                      <td className="table-cell"><Badge status={mgr.status} /></td>
-                      <td className="table-cell">
-                        <button className="btn-primary py-1 px-2 text-[11px]">Submit for Approval</button>
-                      </td>
-                    </tr>
-                    {expandedManager === mgr.name && (
-                      <tr>
-                        <td colSpan={7} className="p-0 bg-gray-50/50">
-                          <div className="p-4 border-b border-border">
-                            <table className="w-full border-collapse bg-white rounded border border-border shadow-sm">
-                              <thead>
-                                <tr className="bg-gray-50">
-                                  <th className="table-header py-1.5">Employee</th>
-                                  <th className="table-header py-1.5">Rating</th>
-                                  <th className="table-header py-1.5">Current Salary</th>
-                                  <th className="table-header py-1.5">Compa-Ratio</th>
-                                  <th className="table-header py-1.5">Recommended %</th>
-                                  <th className="table-header py-1.5">Proposed %</th>
-                                  <th className="table-header py-1.5">Proposed Amount</th>
-                                  <th className="table-header py-1.5">Status</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {teamMembers.map((emp) => (
-                                  <tr key={emp.name}>
-                                    <td className="table-cell py-1.5 font-medium">{emp.name}</td>
-                                    <td className="table-cell py-1.5"><Badge status={emp.rating} /></td>
-                                    <td className="table-cell py-1.5 text-muted-text">{emp.salary}</td>
-                                    <td className="table-cell py-1.5">
-                                      <span className={cn(
-                                        "font-bold",
-                                        parseFloat(emp.compa) > 1.1 ? "text-amber-600" : "text-muted-text"
-                                      )}>
-                                        {emp.compa}
-                                      </span>
-                                    </td>
-                                    <td className="table-cell py-1.5 text-muted-text">{emp.recommended}</td>
-                                    <td className="table-cell py-1.5">
-                                      <input type="text" defaultValue={emp.proposed} className="w-16 border border-border rounded px-2 py-0.5 text-[12px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
-                                    </td>
-                                    <td className="table-cell py-1.5 font-bold text-primary-action">{emp.amount}</td>
-                                    <td className="table-cell py-1.5"><Badge status={emp.status} /></td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
+                {heat.map((h) => (
+                  <tr key={h.name}>
+                    <td className="p-1.5 font-medium">{h.name}</td>
+                    {[h.Eng, h.Prod, h.Sales].map((v, i) => (
+                      <td key={i} className="p-1"><div className={cn('rounded text-white text-center py-1 font-bold', heatColor(v))}>{v}</div></td>
+                    ))}
+                  </tr>
                 ))}
               </tbody>
             </table>
           </div>
         </div>
 
-        <div className="lg:col-span-3 space-y-6">
-          <div className="card space-y-4">
-            <h4 className="text-[12px] font-bold text-muted-text uppercase tracking-wider">Approval Chain</h4>
-            <div className="space-y-6 relative">
-              <div className="absolute left-[7px] top-2 bottom-2 w-[2px] bg-gray-100" />
-              {[
-                { label: 'Manager submits', status: 'Done', name: 'Alex Reid', date: '02 Apr 2026' },
-                { label: 'HRBP Review', status: 'Pending', name: 'Priya B' },
-                { label: 'CFO Approval', status: 'Locked' },
-                { label: 'Sync to Payroll', status: 'Locked' },
-              ].map((step, i) => (
-                <div key={i} className="relative flex gap-4 pl-6">
-                  <div className={cn(
-                    "absolute left-0 top-1 w-4 h-4 rounded-full border-2 z-10",
-                    step.status === 'Done' ? "bg-green-500 border-green-500" : 
-                    step.status === 'Pending' ? "bg-white border-amber-500" : "bg-white border-gray-200"
-                  )}>
-                    {step.status === 'Done' && <CheckCircle2 size={10} className="text-white mx-auto mt-0.5" />}
-                  </div>
-                  <div className="space-y-0.5">
-                    <p className="text-[12px] font-bold leading-none">{step.label}</p>
-                    {step.name && <p className="text-[11px] text-muted-text">{step.name} {step.date && `• ${step.date}`}</p>}
-                    {step.status === 'Pending' && <span className="text-[10px] font-bold text-amber-600 uppercase">⏳ Pending</span>}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <button className="btn-primary w-full py-2 disabled:opacity-50" disabled>Sync to Payroll</button>
+        {/* Ratings distribution */}
+        <div className="card space-y-3">
+          <h3 className="font-semibold text-[14px]">Distribution of Ratings</h3>
+          <div className="h-48">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={dist}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                <XAxis dataKey="rating" axisLine={false} tickLine={false} fontSize={11} />
+                <YAxis axisLine={false} tickLine={false} fontSize={11} />
+                <RechartsTooltip contentStyle={{ fontSize: '12px', borderRadius: '4px' }} />
+                <Bar dataKey="count" fill="#464E7E" radius={[4, 4, 0, 0]} barSize={28} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </div>
+      </div>
+
+      {/* Text-theme clustering / keyword frequency (#497) */}
+      <div className="card space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-[14px]">Feedback Themes</h3>
+          <span className="text-[11px] text-muted-text">Keyword frequency from comments (where policy permits)</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {FEEDBACK_THEMES.map((t) => (
+            <span key={t.word} className="rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 px-3 py-1 font-medium" style={{ fontSize: `${11 + t.count * 0.45}px` }}>
+              {t.word} <span className="text-muted-text font-normal">{t.count}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Peer benchmarks / percentile bands (#498) */}
+      <div className="card space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-[14px]">Peer Benchmark Comparison</h3>
+          <span className="text-[11px] text-muted-text">Cohort: PM • G5 • EMEA • N=14</span>
+        </div>
+        <p className="text-[12px] text-muted-text">You are at the <strong>65th percentile in Client Impact</strong> vs. peers in your cohort.</p>
+        <div className="space-y-3">
+          {benchmarks.map((b) => (
+            <div key={b.comp} className="space-y-1">
+              <div className="flex items-center justify-between text-[12px]"><span className="font-medium">{b.comp}</span><span className="text-muted-text">{b.you}th pctile</span></div>
+              <div className="relative h-3 bg-gray-100 rounded-full">
+                {/* peer band */}
+                <div className="absolute h-3 bg-indigo-100 rounded-full" style={{ left: `${b.band[0]}%`, width: `${b.band[1] - b.band[0]}%` }} />
+                {/* your marker */}
+                <div className="absolute -top-0.5 w-1.5 h-4 bg-primary-action rounded" style={{ left: `${b.you}%` }} title="You" />
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="flex items-center gap-4 text-[10px] text-muted-text pt-1">
+          <span className="flex items-center gap-1"><span className="w-3 h-2 bg-indigo-100 rounded-sm inline-block" /> Peer range (25–75th)</span>
+          <span className="flex items-center gap-1"><span className="w-1.5 h-3 bg-primary-action rounded-sm inline-block" /> You</span>
+        </div>
+        {role === 'HR / Admin' && (
+          <div className="border-t border-border pt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-1"><label className="text-[11px] font-bold text-muted-text uppercase">Cohort definition</label><select className="w-full border border-border rounded px-2 py-1.5 text-[12px]"><option>Role + Level + Discipline + Region</option><option>Role + Level</option></select></div>
+            <div className="space-y-1"><label className="text-[11px] font-bold text-muted-text uppercase">Min sample size (privacy)</label><input type="number" defaultValue={10} className="w-full border border-border rounded px-2 py-1.5 text-[12px]" /></div>
+            <div className="space-y-1"><label className="text-[11px] font-bold text-muted-text uppercase">Smoothing period</label><select className="w-full border border-border rounded px-2 py-1.5 text-[12px]"><option>Rolling 90 days</option><option>Rolling 6 months</option><option>Rolling 12 months</option></select></div>
+          </div>
+        )}
+        <p className="text-[10px] text-muted-text flex items-center gap-1"><Info size={11} /> Data refreshes near real-time (≤5 min) or on an admin-configured schedule. Themes from comments aggregated where policy permits.</p>
       </div>
     </div>
   );
 };
+
 const FeedbackView = () => {
   const [activeTab, setActiveTab] = useState('Give Feedback');
   const [feedbackType, setFeedbackType] = useState('Recognition');
   const [visibility, setVisibility] = useState('Visible to Employee');
+  const [requestOpen, setRequestOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
+  const [reveal, setReveal] = useState<Record<number, boolean>>({});
+  const [acknowledged, setAcknowledged] = useState<Record<number, boolean>>({});
 
   const receivedFeedback = [
-    { id: 1, type: 'Recognition', from: 'Alex Reid', date: '15 Mar 2026', text: 'Sarah showed exceptional leadership during the mobile launch. Her ability to coordinate across engineering and design was outstanding.', icon: '🏆' },
-    { id: 2, type: 'Constructive', from: 'Anonymous Peer', date: '10 Mar 2026', text: 'Consider providing more frequent updates on project status to the wider stakeholder group.', icon: '🔧' },
-    { id: 3, type: 'General', from: 'Nik Maniya', date: '05 Mar 2026', text: 'Great job on the Q1 planning session. The data you provided was very helpful.', icon: '💬' },
+    { id: 1, type: 'Recognition', from: 'Alex Reid', anon: false, score: 4.6, date: '15 Mar 2026', text: 'Sarah showed exceptional leadership during the mobile launch. Her ability to coordinate across engineering and design was outstanding.', icon: '🏆' },
+    { id: 2, type: 'Constructive', from: 'Anonymous Peer', anon: true, score: 3.8, date: '10 Mar 2026', text: 'Consider providing more frequent updates on project status to the wider stakeholder group.', icon: '🔧' },
+    { id: 3, type: 'General', from: 'Nik Maniya', anon: false, score: 4.4, date: '05 Mar 2026', text: 'Great job on the Q1 planning session. The data you provided was very helpful.', icon: '💬' },
   ];
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center border-b border-border">
-        {['Give Feedback', 'Received', 'Sent', 'Requests'].map((tab) => (
+      <div className="flex items-center border-b border-border overflow-x-auto">
+        {['Give Feedback', 'Request Feedback', 'Received', 'Sent', 'Requests', 'Insights'].map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={cn(
-              "px-4 py-2 text-[13px] font-medium transition-all relative",
+              "px-4 py-2 text-[13px] font-medium transition-all relative whitespace-nowrap",
               activeTab === tab ? "text-primary-action" : "text-muted-text hover:text-primary-text"
             )}
           >
@@ -1303,6 +1512,65 @@ const FeedbackView = () => {
         ))}
       </div>
 
+      {activeTab === 'Request Feedback' && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h3 className="text-[14px] font-bold">Your Feedback Requests</h3>
+              <p className="text-[12px] text-muted-text">Request structured feedback from TLs, PMs, Leads or peers.</p>
+            </div>
+            <button onClick={() => setRequestOpen(true)} className="btn-primary flex items-center gap-2"><Send size={14} /> Request Feedback</button>
+          </div>
+
+          <div className="card p-0 overflow-x-auto">
+            <table className="w-full border-collapse min-w-[760px]">
+              <thead>
+                <tr>
+                  <th className="table-header">Respondent</th>
+                  <th className="table-header">Scope</th>
+                  <th className="table-header">Competencies</th>
+                  <th className="table-header">Due</th>
+                  <th className="table-header">Status</th>
+                  <th className="table-header w-10"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {FEEDBACK_REQUESTS.map((r) => (
+                  <tr key={r.id} className="hover:bg-gray-50">
+                    <td className="table-cell"><div className="font-medium">{r.respondent}</div><span className="text-[10px] text-muted-text">{r.respondentRole} • {r.anonymity}</span></td>
+                    <td className="table-cell text-muted-text">{r.scope}</td>
+                    <td className="table-cell"><div className="flex flex-wrap gap-1">{r.competencies.map((c) => <span key={c} className="text-[9px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{c}</span>)}</div></td>
+                    <td className="table-cell text-muted-text text-[11px]">{fmtDate(r.dueDate)}</td>
+                    <td className="table-cell"><Badge status={r.status} /></td>
+                    <td className="table-cell"><MoreVertical size={14} className="text-muted-text cursor-pointer" /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Reminder schedule (#494) */}
+          <div className="card space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-[13px] flex items-center gap-1.5"><Bell size={14} /> Automated Reminder Schedule</h3>
+              <label className="text-[11px] flex items-center gap-1.5 text-muted-text"><input type="checkbox" defaultChecked className="accent-[#464E7E]" /> Escalate overdue to requestor's TL</label>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {REMINDER_SCHEDULE.map((r) => (
+                <div key={r.label} className={cn('flex-1 min-w-[120px] border rounded-[4px] p-2.5', r.state === 'sent' ? 'bg-green-50 border-green-200' : r.state === 'pending' ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-border')}>
+                  <div className="text-[12px] font-bold">{r.label}</div>
+                  <div className="text-[10px] text-muted-text">{r.detail}</div>
+                  <div className="text-[10px] mt-1 capitalize text-muted-text">{r.state}</div>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-text flex items-center gap-1"><Info size={11} /> Reminders sent via email + in-app, stop on completion/cancellation. A nudge to request feedback is sent if none given in 3 months.</p>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'Insights' && <FeedbackInsightsView />}
+
       {activeTab === 'Give Feedback' && (
         <div className="space-y-8">
           <div className="space-y-4">
@@ -1312,10 +1580,10 @@ const FeedbackView = () => {
                 <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">AR</div>
                 <div>
                   <p className="font-bold text-[13px]">Alex Reid requested feedback from you</p>
-                  <p className="text-[11px] text-muted-text">Due by Apr 15, 2026</p>
+                  <p className="text-[11px] text-muted-text">Due by Apr 15, 2026 • Scyne 360° form</p>
                 </div>
               </div>
-              <button className="btn-primary py-1">Give Feedback Now →</button>
+              <button onClick={() => setFormOpen(true)} className="btn-primary py-1">Give Feedback Now →</button>
             </div>
           </div>
 
@@ -1395,37 +1663,82 @@ const FeedbackView = () => {
 
       {activeTab === 'Received' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          {/* Skills Passport profile timeline — aggregated feedback (#496) */}
+          <div className="card space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-[13px] flex items-center gap-1.5"><History size={14} /> Profile Timeline</h3>
+              <span className="text-[11px] text-muted-text">Aggregated into your Skills Passport with tags &amp; competencies</span>
+            </div>
+            <div className="relative pl-4 border-l-2 border-border space-y-3">
+              {[
+                { date: '15 Mar 2026', from: 'Alex Reid', tag: 'Recognition', comps: ['Leadership', 'Client Impact'], score: 4.6 },
+                { date: '10 Mar 2026', from: 'Anonymous Peer', tag: 'Constructive', comps: ['Communication'], score: 3.8 },
+                { date: '05 Mar 2026', from: 'Nik Maniya', tag: 'General', comps: ['Strategic Alignment'], score: 4.4 },
+              ].map((e, i) => (
+                <div key={i} className="relative">
+                  <span className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-primary-action border-2 border-white" />
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[11px] text-muted-text">{e.date}</span>
+                    <span className="text-[12px] font-medium">{e.from}</span>
+                    <span className="text-[9px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded">{e.tag}</span>
+                    {e.comps.map((c) => <span key={c} className="text-[9px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{c}</span>)}
+                    <span className="text-[10px] text-muted-text">• score {e.score}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex gap-2">
               {['All Types', 'Recognition', 'Constructive', 'General'].map(f => (
                 <button key={f} className="px-3 py-1 rounded-full border border-border text-[11px] font-medium hover:bg-gray-50">{f}</button>
               ))}
             </div>
-            <button className="btn-outline py-1 flex items-center gap-2">
-              <Filter size={14} />
-              Filter
-            </button>
+            {/* Export completed feedback (#496) */}
+            <div className="flex items-center gap-2">
+              <button className="btn-outline py-1 flex items-center gap-2"><Download size={14} /> Export PDF</button>
+              <button className="btn-outline py-1 flex items-center gap-2"><Download size={14} /> Export CSV</button>
+            </div>
           </div>
 
           <div className="space-y-3">
-            {receivedFeedback.map((f) => (
-              <div key={f.id} className="card hover:shadow-md transition-shadow">
-                <div className="flex justify-between items-start mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[16px]">{f.icon}</span>
-                    <span className="text-[12px] font-bold text-indigo-700">{f.type}</span>
-                    <span className="text-muted-text">•</span>
-                    <span className="text-[12px] font-medium">From: {f.from}</span>
+            {receivedFeedback.map((f) => {
+              const shown = reveal[f.id];
+              const isAck = acknowledged[f.id];
+              return (
+                <div key={f.id} className="card hover:shadow-md transition-shadow">
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[16px]">{f.icon}</span>
+                      <span className="text-[12px] font-bold text-indigo-700">{f.type}</span>
+                      <span className="text-muted-text">•</span>
+                      {/* Visibility rule: show/hide respondent identity (#496) */}
+                      <span className="text-[12px] font-medium">From: {f.anon && !shown ? 'Hidden (anonymous)' : f.from}</span>
+                      {f.anon && (
+                        <button onClick={() => setReveal((p) => ({ ...p, [f.id]: !p[f.id] }))} className="text-[10px] text-primary-action hover:underline flex items-center gap-0.5">
+                          <Eye size={10} /> {shown ? 'Hide' : 'Reveal'}
+                        </button>
+                      )}
+                      {/* show/hide scores per policy */}
+                      <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">Score: {f.anon ? '••' : f.score}</span>
+                    </div>
+                    <span className="text-[11px] text-muted-text">{f.date}</span>
                   </div>
-                  <span className="text-[11px] text-muted-text">{f.date}</span>
+                  <p className="text-[13px] leading-relaxed mb-4 italic">"{f.text}"</p>
+                  <div className="flex justify-between items-center gap-3 flex-wrap">
+                    <div className="flex gap-2">
+                      <button className="text-[11px] font-bold text-primary-action hover:underline flex items-center gap-1"><Award size={11} /> Store in Skills Passport</button>
+                      <button className="text-[11px] font-bold text-muted-text hover:underline flex items-center gap-1"><Download size={11} /> Export</button>
+                    </div>
+                    {/* Acknowledge receipt (#496) */}
+                    <button onClick={() => setAcknowledged((p) => ({ ...p, [f.id]: true }))} disabled={isAck} className={cn('text-[11px] font-bold flex items-center gap-1', isAck ? 'text-green-600' : 'text-primary-action hover:underline')}>
+                      {isAck ? <><Check size={12} /> Acknowledged</> : <><ThumbsUp size={12} /> Acknowledge receipt</>}
+                    </button>
+                  </div>
                 </div>
-                <p className="text-[13px] leading-relaxed mb-4 italic">"{f.text}"</p>
-                <div className="flex justify-end gap-3">
-                  <button className="text-[11px] font-bold text-primary-action hover:underline">Reply</button>
-                  <button className="text-[11px] font-bold text-muted-text hover:underline">Archive</button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -1462,6 +1775,9 @@ const FeedbackView = () => {
           </div>
         </div>
       )}
+
+      <RequestFeedbackModal open={requestOpen} onClose={() => setRequestOpen(false)} />
+      <Scyne360FormModal open={formOpen} onClose={() => setFormOpen(false)} requestFrom="Alex Reid" />
     </div>
   );
 };
@@ -1504,7 +1820,7 @@ const Dashboard = ({ setActiveView }: { setActiveView: (view: string) => void })
           { label: 'Goals On Track', value: '8/12', trend: '+2', view: 'Company Goals' },
           { label: 'Reviews Pending', value: '3', trend: '-1', view: 'Reviews' },
           { label: 'Feedback Given', value: '14', trend: '+5', view: 'Feedback' },
-          { label: 'Team Avg Score', value: '4.1/5', trend: '+0.2', view: 'Analytics' },
+          { label: 'Team Avg Score', value: '4.1/5', trend: '+0.2', view: 'Reviews' },
           { label: 'Alignment Complete', value: '68%', trend: '+12%', view: 'Company Goals' },
         ].map((stat, i) => (
           <button 
@@ -1560,7 +1876,7 @@ const Dashboard = ({ setActiveView }: { setActiveView: (view: string) => void })
 
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-[14px]">Team Performance Overview</h3>
-            <button onClick={() => setActiveView('People')} className="text-primary-action text-[12px] font-medium hover:underline">View Team</button>
+            <button onClick={() => setActiveView('Team Goals')} className="text-primary-action text-[12px] font-medium hover:underline">View Team</button>
           </div>
           <div className="card p-0 overflow-hidden">
             <table className="w-full border-collapse">
@@ -1615,7 +1931,7 @@ const Dashboard = ({ setActiveView }: { setActiveView: (view: string) => void })
               {[
                 { label: 'Submit Self-Review', days: 14, icon: <ClipboardList size={14} />, action: () => setActiveView('SelfAssessment') },
                 { label: 'Q1 Goal Alignment', days: 3, icon: <Target size={14} />, urgent: true, action: () => setActiveView('Company Goals') },
-                { label: 'Team Calibration', days: 22, icon: <Users size={14} />, action: () => setActiveView('Talent Review') },
+                { label: 'Quarterly Goal Review', days: 22, icon: <Users size={14} />, action: () => setActiveView('Team Goals') },
               ].map((item, i) => (
                 <button 
                   key={i} 
@@ -1691,9 +2007,9 @@ const CompanyGoalsView = ({ setActiveView }: { setActiveView: (view: string) => 
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <div className="relative flex-1 sm:flex-none">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-text" size={14} />
-            <input 
-              type="text" 
-              placeholder="Search goals..." 
+            <input
+              type="text"
+              placeholder="Search goals..."
               className="pl-9 pr-4 py-1.5 border border-border rounded-[4px] text-[13px] w-full sm:w-64 focus:outline-none focus:ring-1 focus:ring-primary-action"
             />
           </div>
@@ -1708,105 +2024,156 @@ const CompanyGoalsView = ({ setActiveView }: { setActiveView: (view: string) => 
         </button>
       </div>
 
-      <div className="card p-0 overflow-x-auto">
-        <table className="w-full border-collapse min-w-[800px]">
-          <thead>
-            <tr>
-              <th className="table-header w-12 text-center">#</th>
-              <th className="table-header">Goal Title</th>
-              <th className="table-header">Strategic Pillar</th>
-              <th className="table-header">Owner</th>
-              <th className="table-header">Teams Aligned</th>
-              <th className="table-header">Progress</th>
-              <th className="table-header">Status</th>
-              <th className="table-header w-12"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {COMPANY_GOALS.map((goal, i) => (
-              <tr key={goal.id} className="hover:bg-gray-50 transition-colors">
-                <td className="table-cell text-center text-muted-text">{i + 1}</td>
-                <td 
-                  className="table-cell font-medium text-primary-action cursor-pointer hover:underline"
-                  onClick={() => setActiveView('GoalDetail')}
-                >
-                  {goal.title}
-                </td>
-                <td className="table-cell">
-                  <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-[11px] font-medium">
-                    {goal.pillar}
-                  </span>
-                </td>
-                <td className="table-cell text-muted-text">{goal.owner}</td>
-                <td className="table-cell font-medium">{goal.teamsAligned} teams</td>
-                <td className="table-cell w-40">
-                  <div className="flex items-center gap-2">
-                    <ProgressBar progress={goal.progress} />
-                    <span className="text-[11px] font-medium">{goal.progress}%</span>
-                  </div>
-                </td>
-                <td className="table-cell"><Badge status={goal.status} /></td>
-                <td className="table-cell text-right">
-                  <button className="text-muted-text hover:text-primary-text">
-                    <MoreVertical size={16} />
-                  </button>
-                </td>
+      {/* All Goals — table */}
+      {activeTab === 'All Goals' && (
+        <div className="card p-0 overflow-x-auto">
+          <table className="w-full border-collapse min-w-[800px]">
+            <thead>
+              <tr>
+                <th className="table-header w-12 text-center">#</th>
+                <th className="table-header">Goal Title</th>
+                <th className="table-header">Strategic Pillar</th>
+                <th className="table-header">Owner</th>
+                <th className="table-header">Teams Aligned</th>
+                <th className="table-header">Progress</th>
+                <th className="table-header">Status</th>
+                <th className="table-header w-12"></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-};
-
-const PeopleDirectory = () => {
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <div className="relative flex-1 sm:flex-none">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-text" size={14} />
-            <input 
-              type="text" 
-              placeholder="Search people..." 
-              className="pl-9 pr-4 py-1.5 border border-border rounded-[4px] text-[13px] w-full sm:w-64 focus:outline-none focus:ring-1 focus:ring-primary-action"
-            />
-          </div>
-          <button className="btn-outline">Department</button>
-          <button className="btn-outline">Manager</button>
+            </thead>
+            <tbody>
+              {COMPANY_GOALS.map((goal, i) => (
+                <tr key={goal.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="table-cell text-center text-muted-text">{i + 1}</td>
+                  <td
+                    className="table-cell font-medium text-primary-action cursor-pointer hover:underline"
+                    onClick={() => setActiveView('GoalDetail')}
+                  >
+                    {goal.title}
+                  </td>
+                  <td className="table-cell">
+                    <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-[11px] font-medium">
+                      {goal.pillar}
+                    </span>
+                  </td>
+                  <td className="table-cell text-muted-text">{goal.owner}</td>
+                  <td className="table-cell font-medium">{goal.teamsAligned} teams</td>
+                  <td className="table-cell w-40">
+                    <div className="flex items-center gap-2">
+                      <ProgressBar progress={goal.progress} />
+                      <span className="text-[11px] font-medium">{goal.progress}%</span>
+                    </div>
+                  </td>
+                  <td className="table-cell"><Badge status={goal.status} /></td>
+                  <td className="table-cell text-right">
+                    <button className="text-muted-text hover:text-primary-text">
+                      <MoreVertical size={16} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-[4px]">
-          <button className="p-1.5 rounded bg-white shadow-sm text-primary-action"><LayoutDashboard size={14} /></button>
-          <button className="p-1.5 rounded text-muted-text hover:text-primary-text"><Menu size={14} /></button>
-        </div>
-      </div>
+      )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {EMPLOYEES.map((employee) => (
-          <div key={employee.id} className="card hover:border-primary-action transition-colors cursor-pointer group">
-            <div className="flex items-start justify-between mb-4">
-              <div className="w-12 h-12 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[16px] font-bold">
-                {employee.avatar}
+      {/* By Strategic Pillar — grouped cards */}
+      {activeTab === 'By Strategic Pillar' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {Object.entries(COMPANY_GOALS.reduce((acc, g) => {
+            const k = g.pillar || 'Other';
+            (acc[k] = acc[k] || []).push(g);
+            return acc;
+          }, {} as Record<string, typeof COMPANY_GOALS>)).map(([pillar, goals]) => {
+            const avg = Math.round(goals.reduce((s, g) => s + g.progress, 0) / goals.length);
+            const teams = goals.reduce((s, g) => s + (g.teamsAligned || 0), 0);
+            return (
+              <div key={pillar} className="card space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Building2 size={15} className="text-primary-action" />
+                    <h3 className="font-bold text-[14px]">{pillar}</h3>
+                    <span className="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded-full">{goals.length} goal{goals.length > 1 ? 's' : ''}</span>
+                  </div>
+                  <span className="text-[11px] text-muted-text">{teams} teams</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] uppercase tracking-wider text-muted-text w-20">Avg progress</span>
+                  <ProgressBar progress={avg} />
+                  <span className="text-[11px] font-bold">{avg}%</span>
+                </div>
+                <div className="space-y-2 pt-1">
+                  {goals.map((g) => (
+                    <div key={g.id} className="flex items-center gap-3 p-2 rounded-[4px] border border-border hover:bg-gray-50 cursor-pointer" onClick={() => setActiveView('GoalDetail')}>
+                      <div className="flex-1">
+                        <div className="text-[12.5px] font-medium text-primary-action">{g.title}</div>
+                        <div className="text-[10px] text-muted-text">{g.owner}</div>
+                      </div>
+                      <div className="w-24"><ProgressBar progress={g.progress} /></div>
+                      <span className="text-[11px] font-medium w-9 text-right">{g.progress}%</span>
+                      <Badge status={g.status} />
+                    </div>
+                  ))}
+                </div>
               </div>
-              <Badge status={employee.alignment} />
-            </div>
-            <h4 className="font-bold text-[15px] group-hover:text-primary-action transition-colors">{employee.name}</h4>
-            <p className="text-[12px] text-muted-text mb-4">{employee.role} • {employee.department}</p>
-            
-            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-border">
-              <div>
-                <span className="text-[10px] text-muted-text uppercase block mb-1">Review Score</span>
-                <span className="font-bold text-[14px]">{employee.reviewScore}</span>
+            );
+          })}
+        </div>
+      )}
+
+      {/* OKR Tree View — objective → key results → aligned goals */}
+      {activeTab === 'OKR Tree View' && (
+        <div className="space-y-4">
+          {COMPANY_GOALS.map((goal) => {
+            const krs: Record<string, string[]> = {
+              cg1: ['New Logo ARR → $15M', 'Expansion ARR → $10M', 'Net churn < 5%'],
+              cg2: ['CSAT > 90%', 'First-response < 2h', 'Detractor follow-up 100%'],
+              cg3: ['iOS + Android GA', 'Crash-free sessions > 99.5%', '50k installs in 90d'],
+              cg4: ['eNPS > 40', 'Regretted attrition < 5%', 'Manager 1:1 coverage 100%'],
+            };
+            const aligned = MY_GOALS.filter((g) => g.parentGoalId === goal.id);
+            return (
+              <div key={goal.id} className="card space-y-3">
+                {/* Objective */}
+                <div className="flex items-center gap-3">
+                  <span className="text-[9px] font-bold uppercase tracking-wider bg-indigo-600 text-white px-2 py-0.5 rounded">Objective</span>
+                  <button onClick={() => setActiveView('GoalDetail')} className="font-bold text-[14px] text-primary-action hover:underline">{goal.title}</button>
+                  <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{goal.pillar}</span>
+                  <div className="flex-1" />
+                  <div className="w-28"><ProgressBar progress={goal.progress} /></div>
+                  <span className="text-[11px] font-bold">{goal.progress}%</span>
+                </div>
+
+                {/* Key Results */}
+                <div className="ml-4 pl-4 border-l-2 border-border space-y-2">
+                  {(krs[goal.id] || []).map((kr, i) => (
+                    <div key={i} className="relative flex items-center gap-2">
+                      <span className="absolute -left-[21px] w-2 h-2 rounded-full bg-indigo-300" />
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-600">KR</span>
+                      <span className="text-[12.5px]">{kr}</span>
+                    </div>
+                  ))}
+
+                  {/* Aligned individual goals */}
+                  {aligned.length > 0 && (
+                    <div className="pt-1 space-y-1.5">
+                      <span className="text-[10px] uppercase tracking-wider text-muted-text">Aligned individual goals</span>
+                      {aligned.map((g) => (
+                        <div key={g.id} className="relative flex items-center gap-2">
+                          <span className="absolute -left-[21px] w-2 h-2 rounded-full bg-teal-300" />
+                          <Target size={11} className="text-teal-600" />
+                          <span className="text-[12px] flex-1">{g.title} <span className="text-muted-text">— {g.owner}</span></span>
+                          <div className="w-20"><ProgressBar progress={g.progress} /></div>
+                          <Badge status={g.status} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
-              <div>
-                <span className="text-[10px] text-muted-text uppercase block mb-1">Goals Done</span>
-                <span className="font-bold text-[14px]">{employee.goalsDone}/{employee.totalGoals}</span>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };
@@ -2310,6 +2677,27 @@ const ManagerReviewView = ({
                 ))}
               </div>
             </div>
+
+            {/* Associated goals shown during review (#502 Performance Alignment) */}
+            <div className="card space-y-3">
+              <h4 className="text-[13px] font-bold flex items-center gap-2"><Target size={14} className="text-primary-action" /> Associated Goals</h4>
+              <p className="text-[11px] text-muted-text">Linked to this review to ground the discussion.</p>
+              <div className="space-y-2">
+                {MY_GOALS.slice(0, 3).map((g) => (
+                  <div key={g.id} className="border border-border rounded-[4px] p-2.5 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-[12px]">{g.title}</span>
+                      <Badge status={g.status} />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <ProgressBar progress={g.progress} />
+                      <span className="text-[11px] font-medium">{g.progress}%</span>
+                    </div>
+                    {g.metrics && g.metrics[0] && <p className="text-[10px] text-muted-text">{g.metrics[0].name}: {g.metrics[0].current}/{g.metrics[0].target}{g.metrics[0].unit}</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -2549,759 +2937,290 @@ const labelToScore: Record<string, number> = {
   'Needs Improvement': 2, 'Unsatisfactory': 1
 };
 
-const TalentReviewView = () => {
-  const [activeTab, setActiveTab] = useState('Calibration Table');
-  const [calGroup, setCalGroup] = useState('All Employees');
-  const [groupByManager, setGroupByManager] = useState(false);
-  const [showOutliersOnly, setShowOutliersOnly] = useState(false);
-  const [isFinalizeModalOpen, setIsFinalizeModalOpen] = useState(false);
-  const [isDiscussionQueueOpen, setIsDiscussionQueueOpen] = useState(false);
-  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' | null }>({ key: '', direction: null });
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+// --- Skills Passport entity manager with full CRUD (REQ1 #487) ---
+const SkillsPassportManager = () => {
+  const [catalog, setCatalog] = useState<Record<string, string[]>>({
+    Skills: [...SKILLS_PASSPORT.Skills],
+    Education: [...SKILLS_PASSPORT.Education],
+    'Roles & Experience': [...SKILLS_PASSPORT['Roles & Experience']],
+  });
+  const [linked, setLinked] = useState<string[]>([]);
+  const [addCat, setAddCat] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+  const [editKey, setEditKey] = useState<string | null>(null);
+  const [editVal, setEditVal] = useState('');
 
-  const [calibrationData, setCalibrationData] = useState([
-    { id: 'row-1', name: 'Sarah Chen', role: 'Product Manager', dept: 'Product', avatarColor: '#3B4FD8', initials: 'SC', position: 'star', positionLabel: '⭐ STAR', systemScore: 4.08, systemLabel: 'Strong', mgrProposed: 'Strong', mgrScore: 4.0, consensus: 4.08, notes: '', status: 'Pending', locked: false, flagged: false, manager: 'Alex Reid' },
-    { id: 'row-2', name: 'Nik Maniya', role: 'Product Lead', dept: 'Product', avatarColor: '#7C3AED', initials: 'NM', position: 'star', positionLabel: '⭐ STAR', systemScore: 4.6, systemLabel: 'Exceptional', mgrProposed: 'Exceptional', mgrScore: 5.0, consensus: 4.6, notes: '', status: 'Pending', locked: false, flagged: false, manager: 'Alex Reid' },
-    { id: 'row-3', name: 'Yash Thakur', role: 'Sales Lead', dept: 'Sales', avatarColor: '#D97706', initials: 'YT', position: 'high-potential', positionLabel: 'HIGH POTENTIAL', systemScore: 3.8, systemLabel: 'Strong', mgrProposed: 'Exceptional', mgrScore: 4.6, consensus: null, notes: '', status: 'Pending', locked: false, flagged: false, manager: 'Alex Reid' },
-    { id: 'row-4', name: 'Ben Scyne', role: 'Sr. Engineer', dept: 'Engineering', avatarColor: '#059669', initials: 'BS', position: 'core-player', positionLabel: 'CORE PLAYER', systemScore: 4.3, systemLabel: 'Strong', mgrProposed: 'Strong', mgrScore: 4.3, consensus: 4.3, notes: 'Consistent delivery, strong team player.', status: 'Agreed', locked: false, flagged: false, manager: 'Priya B' },
-    { id: 'row-5', name: 'Divya G', role: 'Marketing Analyst', dept: 'Marketing', avatarColor: '#0891B2', initials: 'DG', position: 'core-player', positionLabel: 'CORE PLAYER', systemScore: 3.1, systemLabel: 'Meets', mgrProposed: 'Needs Improvement', mgrScore: 2.0, consensus: null, notes: '', status: 'Pending', locked: false, flagged: true, manager: 'Priya B' },
-    { id: 'row-6', name: 'Darrell Steward', role: 'Product Designer', dept: 'Product', avatarColor: '#BE185D', initials: 'DS', position: 'solid', positionLabel: 'SOLID PERFORMER', systemScore: 3.5, systemLabel: 'Strong', mgrProposed: 'Strong', mgrScore: 3.5, consensus: 3.5, notes: 'Reliable output, improved significantly in Q3.', status: 'Agreed', locked: true, flagged: false, manager: 'HR Admin' },
-    { id: 'row-7', name: 'Daniele Richards', role: 'Org Administrator', dept: 'Operations', avatarColor: '#DC2626', initials: 'DR', position: 'high-potential', positionLabel: 'HIGH POTENTIAL', systemScore: 4.2, systemLabel: 'Strong', mgrProposed: 'Exceptional', mgrScore: 4.8, consensus: null, notes: '', status: 'Pending', locked: false, flagged: false, manager: 'HR Admin' },
-    { id: 'row-8', name: 'Christopher W-H', role: 'Branch Manager', dept: 'Operations', avatarColor: '#0D9488', initials: 'CW', position: 'key-player', positionLabel: 'KEY PLAYER', systemScore: 3.3, systemLabel: 'Meets', mgrProposed: 'Meets', mgrScore: 3.3, consensus: 3.3, notes: 'Steady performer. Consider stretch goal next cycle.', status: 'Agreed', locked: false, flagged: false, manager: 'Priya B' },
-    { id: 'row-9', name: 'Devon Lane', role: 'Trust Administrator', dept: 'Operations', avatarColor: '#F59E0B', initials: 'DL', position: 'underperformer', positionLabel: 'UNDERPERFORMER', systemScore: 1.8, systemLabel: 'Needs Improvement', mgrProposed: 'Meets', mgrScore: 3.0, consensus: null, notes: '', status: 'Pending', locked: false, flagged: true, manager: 'HR Admin' },
-    { id: 'row-10', name: 'Wade Warren', role: 'UX Researcher', dept: 'Product', avatarColor: '#6366F1', initials: 'WW', position: 'average', positionLabel: 'AVERAGE', systemScore: 3.0, systemLabel: 'Meets', mgrProposed: 'Meets', mgrScore: 3.0, consensus: 3.0, notes: 'Performance stable. Encourage goal ambition for next FY.', status: 'Agreed', locked: false, flagged: false, manager: 'Alex Reid' }
-  ]);
-
-  const nineBoxData = [
-    { label: 'ENIGMA', color: 'bg-red-50' },
-    { label: 'HIGH POTENTIAL', color: 'bg-amber-50' },
-    { label: 'STAR ⭐', color: 'bg-indigo-100' },
-    { label: 'DILEMMA', color: 'bg-red-50' },
-    { label: 'KEY PLAYER', color: 'bg-gray-50' },
-    { label: 'CORE PLAYER', color: 'bg-indigo-50' },
-    { label: 'UNDERPERFORMER', color: 'bg-red-100' },
-    { label: 'AVERAGE', color: 'bg-gray-100' },
-    { label: 'SOLID PERFORMER', color: 'bg-green-50' },
-  ];
-
-  const scoreToLabel = (score: number) => {
-    if (score >= 4.5) return 'Exceptional';
-    if (score >= 3.5) return 'Strong';
-    if (score >= 2.5) return 'Meets';
-    if (score >= 1.5) return 'Needs Improvement';
-    return 'Unsatisfactory';
+  const toggleLink = (v: string) => setLinked((p) => (p.includes(v) ? p.filter((x) => x !== v) : [...p, v]));
+  const create = (cat: string) => {
+    const v = draft.trim(); if (!v) return;
+    setCatalog((c) => ({ ...c, [cat]: [...c[cat], v] }));
+    setLinked((p) => [...p, v]); setDraft(''); setAddCat(null);
   };
-
-  const groupStats: Record<string, { employees: number, avg: number, budget: string }> = {
-    'Engineering — Senior': { employees: 8, avg: 4.2, budget: '$64,000' },
-    'Sales — All Levels': { employees: 5, avg: 3.6, budget: '$40,000' },
-    'Product — All Levels': { employees: 4, avg: 4.1, budget: '$36,000' },
-    'Marketing — All Levels': { employees: 3, avg: 3.1, budget: '$24,000' },
+  const remove = (cat: string, item: string) => {
+    setCatalog((c) => ({ ...c, [cat]: c[cat].filter((x) => x !== item) }));
+    setLinked((p) => p.filter((x) => x !== item));
   };
-
-  const handleConsensusChange = (id: string, value: string) => {
-    const numValue = parseFloat(value);
-    setCalibrationData(prev => prev.map(row => {
-      if (row.id === id) {
-        const updatedRow = { ...row, consensus: isNaN(numValue) ? null : numValue };
-        return { ...updatedRow, status: getUpdatedStatus(updatedRow) };
-      }
-      return row;
-    }));
-  };
-
-  const handleNotesChange = (id: string, value: string) => {
-    setCalibrationData(prev => prev.map(row => {
-      if (row.id === id) {
-        const updatedRow = { ...row, notes: value };
-        return { ...updatedRow, status: getUpdatedStatus(updatedRow) };
-      }
-      return row;
-    }));
-  };
-
-  const getUpdatedStatus = (row: any) => {
-    if (row.locked) return 'Locked';
-    if (row.consensus !== null && row.notes.trim() !== '') return 'Agreed';
-    if (row.consensus !== null || row.notes.trim() !== '') return 'Under Review';
-    return 'Pending';
-  };
-
-  const toggleLock = (id: string) => {
-    setCalibrationData(prev => prev.map(row => {
-      if (row.id === id) {
-        const newLocked = !row.locked;
-        return { ...row, locked: newLocked, status: newLocked ? 'Locked' : getUpdatedStatus({ ...row, locked: false }) };
-      }
-      return row;
-    }));
-  };
-
-  const toggleFlag = (id: string) => {
-    setCalibrationData(prev => prev.map(row => row.id === id ? { ...row, flagged: !row.flagged } : row));
-  };
-
-  const resetToSystem = (id: string) => {
-    setCalibrationData(prev => prev.map(row => {
-      if (row.id === id) {
-        const updatedRow = { ...row, consensus: row.systemScore };
-        return { ...updatedRow, status: getUpdatedStatus(updatedRow) };
-      }
-      return row;
-    }));
-  };
-
-  const handleSort = (key: string) => {
-    if (groupByManager) return;
-    let direction: 'asc' | 'desc' | null = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
-    else if (sortConfig.key === key && sortConfig.direction === 'desc') direction = null;
-    setSortConfig({ key, direction });
-  };
-
-  const getVariance = (row: any) => {
-    return (row.mgrScore - row.systemScore).toFixed(1);
-  };
-
-  const isOutlier = (row: any) => {
-    return Math.abs(row.mgrScore - row.systemScore) > 1.5;
-  };
-
-  const filteredData = calibrationData
-    .filter(row => {
-      if (calGroup !== 'All Employees') {
-        const groupDept = calGroup.split(' — ')[0];
-        if (row.dept !== groupDept) return false;
-      }
-      if (showOutliersOnly && !isOutlier(row)) return false;
-      return true;
-    })
-    .sort((a, b) => {
-      if (!sortConfig.direction || !sortConfig.key) return 0;
-      const aVal = a[sortConfig.key as keyof typeof a] as number;
-      const bVal = b[sortConfig.key as keyof typeof b] as number;
-      return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal;
-    });
-
-  const flaggedCount = calibrationData.filter(r => r.flagged).length;
-  const allConsensusFilled = calibrationData.every(r => r.consensus !== null);
-
-  const managers = Array.from(new Set(filteredData.map(r => r.manager))) as string[];
-
-  const handleFinalize = () => {
-    setCalibrationData(prev => prev.map(row => ({ ...row, locked: true, status: 'Locked' })));
-    setIsFinalizeModalOpen(false);
-  };
-
-  const viewIn9Box = (employeeName: string) => {
-    setActiveTab('9-Box Grid');
-    setTimeout(() => {
-      const card = document.querySelector(`[data-employee="${employeeName}"]`);
-      if (card) {
-        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        card.classList.add('nine-box-highlight');
-        setTimeout(() => card.classList.remove('nine-box-highlight'), 2200);
-      }
-    }, 100);
+  const saveEdit = (cat: string, item: string) => {
+    const v = editVal.trim(); if (!v) { setEditKey(null); return; }
+    setCatalog((c) => ({ ...c, [cat]: c[cat].map((x) => (x === item ? v : x)) }));
+    setLinked((p) => p.map((x) => (x === item ? v : x))); setEditKey(null);
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center border-b border-border">
-        {['9-Box Grid', 'Calibration Table', 'Succession Planning'].map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={cn(
-              "px-4 py-2 text-[13px] font-medium transition-all relative",
-              activeTab === tab ? "text-primary-action" : "text-muted-text hover:text-primary-text"
-            )}
-          >
-            {tab}
-            {activeTab === tab && (
-              <motion.div 
-                layoutId="activeTabTalent"
-                className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-action" 
-              />
-            )}
-          </button>
-        ))}
-      </div>
-
-      {activeTab === '9-Box Grid' && (
-        <>
+    <div className="space-y-3">
+      {(Object.entries(catalog) as [string, string[]][]).map(([cat, items]) => (
+        <div key={cat} className="space-y-1">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <button className="btn-outline">Department</button>
-              <button className="btn-outline">Manager</button>
-            </div>
-            <div className="flex items-center gap-4 text-[11px] text-muted-text uppercase font-medium">
-              <div className="flex items-center gap-1"><div className="w-2 h-2 bg-indigo-100 rounded-sm" /> High</div>
-              <div className="flex items-center gap-1"><div className="w-2 h-2 bg-gray-100 rounded-sm" /> Mid</div>
-              <div className="flex items-center gap-1"><div className="w-2 h-2 bg-red-100 rounded-sm" /> Low</div>
-            </div>
+            <span className="text-[10px] uppercase tracking-wider text-muted-text">{cat}</span>
+            <button type="button" onClick={() => { setAddCat(addCat === cat ? null : cat); setDraft(''); }} className="text-[10px] text-primary-action hover:underline flex items-center gap-0.5"><Plus size={10} /> New</button>
           </div>
-
-          <div className="relative pt-8 pl-8 overflow-x-auto">
-            <div className="min-w-[700px]">
-              {/* Y Axis Label */}
-              <div className="absolute left-0 top-1/2 -translate-y-1/2 -rotate-90 text-[11px] font-bold text-muted-text uppercase tracking-widest origin-center">
-                Potential →
-              </div>
-              
-              {/* X Axis Label */}
-              <div className="absolute bottom-[-24px] left-1/2 -translate-x-1/2 text-[11px] font-bold text-muted-text uppercase tracking-widest">
-                Performance →
-              </div>
-
-              <div className="grid grid-cols-3 grid-rows-3 gap-1 bg-border border border-border">
-                {nineBoxData.map((box, i) => (
-                  <div key={i} className={cn("min-h-[160px] p-2 flex flex-col gap-2", box.color)}>
-                    <span className="text-[9px] font-bold text-muted-text uppercase text-center">{box.label}</span>
-                    <div className="flex flex-wrap gap-2 justify-center">
-                      {EMPLOYEES.filter(e => e.nineBoxLabel === box.label).map(e => (
-                        <div 
-                          key={e.id} 
-                          data-employee={e.name}
-                          className="nine-box-card bg-white border border-border rounded-[2px] p-1.5 shadow-sm w-24 flex flex-col items-center text-center cursor-move hover:border-primary-action transition-all"
-                        >
-                          <div className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center text-[10px] font-bold mb-1">
-                            {e.avatar}
-                          </div>
-                          <span className="text-[10px] font-bold truncate w-full">{e.name}</span>
-                          <span className="text-[8px] text-muted-text truncate w-full">{e.role}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+          <div className="flex flex-wrap gap-1.5">
+            {items.map((item) => {
+              const key = `${cat}::${item}`;
+              const isLinked = linked.includes(item);
+              if (editKey === key) {
+                return (
+                  <span key={key} className="inline-flex items-center gap-1 border border-primary-action rounded-full pl-2 pr-1 py-0.5">
+                    <input autoFocus value={editVal} onChange={(e) => setEditVal(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && saveEdit(cat, item)} className="text-[11px] w-24 outline-none bg-transparent" />
+                    <button type="button" onClick={() => saveEdit(cat, item)} className="text-green-600"><Check size={11} /></button>
+                  </span>
+                );
+              }
+              return (
+                <span key={key} className={cn('inline-flex items-center gap-1 rounded-full border pl-2.5 pr-1.5 py-0.5 text-[11px]', isLinked ? 'bg-indigo-50 border-indigo-400 text-indigo-700' : 'bg-white border-border text-muted-text')}>
+                  <button type="button" onClick={() => toggleLink(item)} className="flex items-center gap-1">{isLinked && <Check size={10} />}{item}</button>
+                  <button type="button" onClick={() => { setEditKey(key); setEditVal(item); }} className="text-muted-text/60 hover:text-primary-action"><Pencil size={10} /></button>
+                  <button type="button" onClick={() => remove(cat, item)} className="text-muted-text/60 hover:text-red-600"><Trash2 size={10} /></button>
+                </span>
+              );
+            })}
           </div>
-        </>
-      )}
-
-      {activeTab === 'Calibration Table' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <div className="flex items-center gap-2">
-              <button className="btn-outline">Department</button>
-              <button className="btn-outline">Manager</button>
-            </div>
-
-            <div className="flex items-center gap-3">
-              {flaggedCount > 0 && (
-                <button 
-                  onClick={() => setIsDiscussionQueueOpen(true)}
-                  className="bg-[#FEF3C7] border border-[#FCD34D] text-[#D97706] text-[11px] font-bold px-3 py-1.5 rounded-[4px] flex items-center gap-1.5"
-                >
-                  <Flag size={12} /> Discussion Queue ({flaggedCount})
-                </button>
-              )}
-
-              <div className="relative">
-                <select 
-                  className="cal-group-select"
-                  value={calGroup}
-                  onChange={(e) => setCalGroup(e.target.value)}
-                >
-                  <option>All Employees</option>
-                  <option>Engineering — Senior</option>
-                  <option>Engineering — Mid</option>
-                  <option>Sales — All Levels</option>
-                  <option>Product — All Levels</option>
-                  <option>Marketing — All Levels</option>
-                </select>
-                <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
-                  <ChevronDown size={12} className="text-muted-text" />
-                </div>
-              </div>
-
-              <div className="group relative">
-                <div className="flex items-center gap-2 cursor-help">
-                  <svg width="120" height="32" viewBox="0 0 120 32" className="rounded-[4px]">
-                    <path d="M0 30 Q30 30 40 20 T60 5 T80 20 T120 30" fill="rgba(245,158,11,0.05)" stroke="#F59E0B" strokeWidth="1.5" clipPath="inset(0 80 0 0)" />
-                    <path d="M0 30 Q30 30 40 20 T60 5 T80 20 T120 30" fill="rgba(16,185,129,0.05)" stroke="#10B981" strokeWidth="1.5" clipPath="inset(0 40 0 40)" />
-                    <path d="M0 30 Q30 30 40 20 T60 5 T80 20 T120 30" fill="rgba(59,79,216,0.05)" stroke="#3B4FD8" strokeWidth="1.5" clipPath="inset(0 0 0 80)" />
-                  </svg>
-                </div>
-                <div className="absolute right-0 top-full mt-2 hidden group-hover:block z-50">
-                  <div className="bg-white border border-border rounded-[4px] shadow-lg p-3 w-[200px] space-y-2">
-                    <p className="text-[12px] font-bold">Score Distribution — Current View</p>
-                    <div className="space-y-1 text-[11px]">
-                      <div className="flex justify-between text-[#F59E0B]"><span>Below expectations</span><span>9% ↓2%</span></div>
-                      <div className="flex justify-between text-[#10B981]"><span>Meets expectations</span><span>81% ↑2%</span></div>
-                      <div className="flex justify-between text-[#3B4FD8]"><span>Exceeds expectations</span><span>10% ↑8%</span></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] text-[#52525B] font-medium">Group by Manager</span>
-                <button 
-                  onClick={() => setGroupByManager(!groupByManager)}
-                  className={cn(
-                    "w-8 h-[18px] rounded-full relative transition-colors",
-                    groupByManager ? "bg-primary-action" : "bg-[#D4D4D8]"
-                  )}
-                >
-                  <div className={cn(
-                    "absolute top-0.5 w-3.5 h-3.5 bg-white rounded-full transition-transform",
-                    groupByManager ? "translate-x-[15px]" : "translate-x-0.5"
-                  )} />
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] text-[#52525B] font-medium">Outliers only</span>
-                <button 
-                  onClick={() => setShowOutliersOnly(!showOutliersOnly)}
-                  className={cn(
-                    "w-8 h-[18px] rounded-full relative transition-colors",
-                    showOutliersOnly ? "bg-primary-action" : "bg-[#D4D4D8]"
-                  )}
-                >
-                  <div className={cn(
-                    "absolute top-0.5 w-3.5 h-3.5 bg-white rounded-full transition-transform",
-                    showOutliersOnly ? "translate-x-[15px]" : "translate-x-0.5"
-                  )} />
-                </button>
-              </div>
-
-              <button 
-                onClick={() => setIsFinalizeModalOpen(true)}
-                className={cn(
-                  "flex items-center gap-1.5 px-3.5 py-1.5 rounded-[4px] text-[12px] font-medium transition-all",
-                  allConsensusFilled ? "bg-primary-action text-white cursor-pointer" : "bg-[#A5B4FC] text-white opacity-70 cursor-not-allowed"
-                )}
-              >
-                <Lock size={12} /> Finalize Calibration
-              </button>
-            </div>
-          </div>
-
-          {calGroup !== 'All Employees' && groupStats[calGroup] && (
-            <div className="bg-[#EEF2FF] border border-[#C7D2FE] rounded-[4px] px-3 py-1.5 text-[11px] text-primary-action font-medium">
-              Group: {calGroup} · {groupStats[calGroup].employees} employees · Avg Score: {groupStats[calGroup].avg} · Budget Pool: {groupStats[calGroup].budget}
+          {addCat === cat && (
+            <div className="flex items-center gap-1.5 mt-1">
+              <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && create(cat)} placeholder={`Add ${cat.toLowerCase()}…`} className="flex-1 border border-border rounded-[4px] px-2 py-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
+              <button type="button" onClick={() => create(cat)} className="btn-primary py-1 px-2 text-[11px]">Add</button>
             </div>
           )}
-
-          <div className="bg-white border border-border rounded-[4px] overflow-hidden overflow-x-auto">
-            <table className="w-full border-collapse min-w-[1100px]">
-              <thead className="sticky top-0 z-10 bg-[#FAFAFA] border-b-2 border-border h-9">
-                <tr>
-                  <th className="table-header sticky left-0 bg-[#FAFAFA] z-20 border-r border-border min-w-[200px]">EMPLOYEE</th>
-                  <th className="table-header min-w-[110px]">DEPARTMENT</th>
-                  <th className="table-header min-w-[150px]">9-BOX POSITION</th>
-                  <th className="table-header min-w-[120px] cursor-pointer group" onClick={() => handleSort('systemScore')}>
-                    <div className="flex items-center gap-1">
-                      SYSTEM SCORE
-                      <ChevronsUpDown size={10} className={cn("transition-colors", sortConfig.key === 'systemScore' ? "text-primary-action" : "text-[#D4D4D8]")} />
-                    </div>
-                  </th>
-                  <th className="table-header min-w-[140px] cursor-pointer group" onClick={() => handleSort('mgrScore')}>
-                    <div className="flex items-center gap-1">
-                      MGR PROPOSED
-                      <ChevronsUpDown size={10} className={cn("transition-colors", sortConfig.key === 'mgrScore' ? "text-primary-action" : "text-[#D4D4D8]")} />
-                    </div>
-                  </th>
-                  <th className="table-header min-w-[130px] cursor-pointer group" onClick={() => handleSort('consensus')}>
-                    <div className="flex items-center gap-1">
-                      CONSENSUS
-                      <ChevronsUpDown size={10} className={cn("transition-colors", sortConfig.key === 'consensus' ? "text-primary-action" : "text-[#D4D4D8]")} />
-                    </div>
-                  </th>
-                  <th className="table-header min-w-[80px] text-center cursor-pointer group" onClick={() => handleSort('variance')}>
-                    <div className="flex items-center justify-center gap-1">
-                      VAR
-                      <ChevronsUpDown size={10} className={cn("transition-colors", sortConfig.key === 'variance' ? "text-primary-action" : "text-[#D4D4D8]")} />
-                    </div>
-                  </th>
-                  <th className="table-header flex-grow min-w-[180px]">NOTES</th>
-                  <th className="table-header min-w-[100px]">STATUS</th>
-                  <th className="table-header w-12 text-center"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {groupByManager ? (
-                  managers.map(manager => (
-                    <React.Fragment key={manager}>
-                      <tr 
-                        className="bg-[#F4F4F5] border-b border-border h-10 cursor-pointer hover:bg-gray-200 transition-colors"
-                        onClick={() => setCollapsedGroups(prev => ({ ...prev, [manager]: !prev[manager] }))}
-                      >
-                        <td colSpan={10} className="px-3">
-                          <div className="flex items-center justify-between w-full">
-                            <div className="flex items-center gap-3">
-                              {collapsedGroups[manager] ? <ChevronRight size={14} className="text-[#52525B]" /> : <ChevronDown size={14} className="text-[#52525B]" />}
-                              <div className="w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center text-[10px] font-bold">{manager.split(' ').map(n => n[0]).join('')}</div>
-                              <span className="text-[13px] font-bold text-[#18181B]">{manager}</span>
-                              <span className="bg-[#E4E4E7] text-[#52525B] text-[11px] font-bold px-1.5 py-0.5 rounded-[4px]">{filteredData.filter(r => r.manager === manager).length} reports</span>
-                              <span className="bg-[#EEF2FF] text-primary-action text-[11px] font-bold px-1.5 py-0.5 rounded-[4px]">Team avg: {(filteredData.filter(r => r.manager === manager).reduce((acc, curr) => acc + (curr.consensus || curr.systemScore), 0) / filteredData.filter(r => r.manager === manager).length).toFixed(2)}</span>
-                            </div>
-                            {filteredData.filter(r => r.manager === manager).every(r => labelToScore[r.mgrProposed] >= 4) && (
-                              <div className="flex items-center gap-1.5 text-[#D97706] text-[11px] font-bold" title="This manager rated all direct reports above expectations">
-                                <AlertTriangle size={12} /> Possible rating inflation
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                      {!collapsedGroups[manager] && filteredData.filter(r => r.manager === manager).map(row => (
-                        <CalibrationRow 
-                          key={row.id} 
-                          row={row} 
-                          onConsensusChange={handleConsensusChange}
-                          onNotesChange={handleNotesChange}
-                          toggleLock={toggleLock}
-                          toggleFlag={toggleFlag}
-                          resetToSystem={resetToSystem}
-                          viewIn9Box={viewIn9Box}
-                          scoreToLabel={scoreToLabel}
-                          getVariance={getVariance}
-                          isOutlier={isOutlier}
-                        />
-                      ))}
-                    </React.Fragment>
-                  ))
-                ) : (
-                  filteredData.map(row => (
-                    <CalibrationRow 
-                      key={row.id} 
-                      row={row} 
-                      onConsensusChange={handleConsensusChange}
-                      onNotesChange={handleNotesChange}
-                      toggleLock={toggleLock}
-                      toggleFlag={toggleFlag}
-                      resetToSystem={resetToSystem}
-                      viewIn9Box={viewIn9Box}
-                      scoreToLabel={scoreToLabel}
-                      getVariance={getVariance}
-                      isOutlier={isOutlier}
-                    />
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
         </div>
-      )}
-
-      {/* Discussion Queue Drawer */}
-      <AnimatePresence>
-        {isDiscussionQueueOpen && (
-          <>
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsDiscussionQueueOpen(false)}
-              className="fixed inset-0 bg-black/20 z-[100] backdrop-blur-sm"
-            />
-            <motion.div 
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed right-0 top-0 bottom-0 w-full max-w-[280px] bg-white shadow-xl z-[110] flex flex-col border-l border-border"
-            >
-              <div className="p-4 border-b border-border flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-[14px] font-bold text-[#18181B]">🚩 Discussion Queue</span>
-                  <span className="bg-[#FEF3C7] text-[#D97706] text-[11px] font-bold px-1.5 py-0.5 rounded-full">{flaggedCount}</span>
-                </div>
-                <button onClick={() => setIsDiscussionQueueOpen(false)} className="text-muted-text hover:text-primary-text">
-                  <X size={14} />
-                </button>
-              </div>
-              
-              <div className="flex-1 overflow-y-auto p-3 space-y-3">
-                {calibrationData.filter(r => r.flagged).map(row => (
-                  <div key={row.id} className="bg-white border border-border rounded-[4px] p-3 space-y-3 shadow-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{ backgroundColor: row.avatarColor }}>{row.initials}</div>
-                      <div>
-                        <p className="text-[13px] font-bold text-[#18181B] leading-none">{row.name}</p>
-                        <p className="text-[11px] text-muted-text mt-1">{row.role}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className={cn("text-[11px] font-bold", parseFloat(getVariance(row)) > 0 ? "text-[#D97706]" : "text-primary-action")}>
-                        Variance: {parseFloat(getVariance(row)) > 0 ? '+' : ''}{getVariance(row)}
-                      </span>
-                      <Badge status={row.status} />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-muted-text">Consensus:</span>
-                      <input 
-                        type="number" 
-                        className="w-[60px] h-7 border border-border rounded-[4px] text-[12px] text-center font-bold focus:ring-1 focus:ring-primary-action outline-none"
-                        value={row.consensus || ''}
-                        onChange={(e) => handleConsensusChange(row.id, e.target.value)}
-                      />
-                    </div>
-                    <textarea 
-                      className="w-full border border-border rounded-[4px] p-2 text-[11px] focus:ring-1 focus:ring-primary-action outline-none resize-none"
-                      rows={2}
-                      placeholder="Add calibration note..."
-                      value={row.notes}
-                      onChange={(e) => handleNotesChange(row.id, e.target.value)}
-                    />
-                  </div>
-                ))}
-              </div>
-
-              <div className="p-3 border-t border-border">
-                <button 
-                  onClick={() => {
-                    setCalibrationData(prev => prev.map(r => r.flagged ? { ...r, flagged: false, status: 'Agreed' } : r));
-                    setIsDiscussionQueueOpen(false);
-                  }}
-                  className="w-full border border-primary-action text-primary-action text-[12px] font-bold py-2 rounded-[4px] hover:bg-indigo-50 transition-colors"
-                >
-                  Mark all as Agreed
-                </button>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-
-      {/* Finalize Modal */}
-      <AnimatePresence>
-        {isFinalizeModalOpen && (
-          <div className="fixed inset-0 flex items-center justify-center z-[1000]">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsFinalizeModalOpen(false)}
-              className="absolute inset-0 bg-black/40"
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 8 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 8 }}
-              className="bg-white rounded-lg shadow-2xl w-full max-w-[440px] p-6 relative z-10"
-            >
-              <div className="flex items-center gap-2 mb-4">
-                <Lock size={20} className="text-primary-action" />
-                <h3 className="text-[16px] font-bold text-[#18181B]">Finalize Calibration</h3>
-              </div>
-
-              <p className="text-[13px] text-[#52525B] mb-4">
-                You are about to finalize calibration for {calibrationData.length} employees. This will lock all consensus scores and notify managers.
-              </p>
-
-              {!allConsensusFilled ? (
-                <div className="bg-[#FEF3C7] border border-[#FCD34D] rounded-[4px] p-3 space-y-2">
-                  <div className="flex items-center gap-2 text-[#D97706] text-[12px] font-bold">
-                    <AlertTriangle size={14} />
-                    {calibrationData.filter(r => r.consensus === null).length} employees are missing consensus scores — complete these before finalizing.
-                  </div>
-                  <ul className="list-disc list-inside text-[11px] text-muted-text pl-1">
-                    {calibrationData.filter(r => r.consensus === null).slice(0, 5).map(r => (
-                      <li key={r.id}>{r.name}</li>
-                    ))}
-                    {calibrationData.filter(r => r.consensus === null).length > 5 && (
-                      <li>+ {calibrationData.filter(r => r.consensus === null).length - 5} more</li>
-                    )}
-                  </ul>
-                </div>
-              ) : (
-                <div className="bg-[#DCFCE7] border border-[#BBF7D0] rounded-[4px] p-3 flex items-center gap-2 text-[#16A34A] text-[12px] font-bold">
-                  <CheckCircle2 size={14} />
-                  All {calibrationData.length} employees have consensus scores ✅
-                </div>
-              )}
-
-              <div className="flex justify-end gap-2 mt-6">
-                <button onClick={() => setIsFinalizeModalOpen(false)} className="btn-outline text-[13px] px-4">Cancel</button>
-                <button 
-                  onClick={handleFinalize}
-                  disabled={!allConsensusFilled}
-                  className={cn(
-                    "btn-primary text-[13px] px-4 flex items-center gap-1.5",
-                    !allConsensusFilled && "bg-[#A5B4FC] cursor-not-allowed"
-                  )}
-                >
-                  Finalize & Lock 🔒
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      ))}
+      <p className="text-[10px] text-muted-text">Create, rename, link or delete Skills Passport entities directly here — {linked.length} linked to this goal.</p>
     </div>
   );
 };
 
-const CalibrationRow = ({ 
-  row, 
-  onConsensusChange, 
-  onNotesChange, 
-  toggleLock, 
-  toggleFlag, 
-  resetToSystem, 
-  viewIn9Box,
-  scoreToLabel,
-  getVariance,
-  isOutlier
-}: any) => {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<string | null>(null);
+// --- Goal Creation Drawer (REQ1 #482, #485, #486, #484, #487, #490) ---
+const GoalCreationDrawer = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
+  const [types, setTypes] = useState<string[]>([]);
+  const [values, setValues] = useState<string[]>([]);
+  const [visibility, setVisibility] = useState('People Leader');
+  const [progressType, setProgressType] = useState('Both');
+  const [metrics, setMetrics] = useState([{ name: '', target: '', unit: '%' }]);
+  const [milestones, setMilestones] = useState<{ description: string; targetDate: string }[]>([]);
+  const [activities, setActivities] = useState<string[]>([]);
+  const [linkedFeedback, setLinkedFeedback] = useState<string[]>([]);
 
-  const handleBlur = () => {
-    setSaveStatus('Saved ✓');
-    setTimeout(() => setSaveStatus(null), 1500);
-  };
+  const toggle = (setter: React.Dispatch<React.SetStateAction<string[]>>) => (v: string) =>
+    setter((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
 
-  const variance = parseFloat(getVariance(row));
-  const outlier = isOutlier(row);
+  const visBlurb = GOAL_VISIBILITY_OPTIONS.find((o) => o.value === visibility)?.blurb;
 
   return (
-    <tr 
-      className={cn(
-        "cal-row border-b border-[#F4F4F5] h-12 transition-all",
-        outlier && "bg-[#FFFBEB] border-l-[3px] border-l-[#F59E0B]",
-        row.locked && "bg-[#FAFAFA]"
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 bg-black/20 z-40 backdrop-blur-sm" />
+          <motion.div
+            initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            className="fixed right-0 top-0 bottom-0 w-full max-w-[460px] bg-white shadow-xl z-50 flex flex-col"
+          >
+            <div className="p-5 border-b border-border flex items-center justify-between">
+              <h3 className="font-bold text-[16px]">Create New Goal</h3>
+              <button onClick={onClose} className="text-muted-text hover:text-primary-text"><X size={18} /></button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-6">
+              {/* Basics */}
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-[12px] font-medium">Goal Title</label>
+                  <input type="text" placeholder="e.g. Launch new API documentation" className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[12px] font-medium">Description</label>
+                  <textarea rows={3} placeholder="A clear and concise description of the goal" className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[12px] font-medium">Weight %</label>
+                    <input type="number" defaultValue={25} className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[12px] font-medium">Target Completion Date</label>
+                    <input type="date" className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Goal Types (#485) */}
+              <div className="space-y-2">
+                <label className="text-[12px] font-bold flex items-center gap-1.5"><Layers size={13} /> Goal Type <span className="text-muted-text font-normal">(select one or more)</span></label>
+                <ChipMultiSelect options={[...GOAL_TYPES]} selected={types} onToggle={toggle(setTypes)} />
+              </div>
+
+              {/* Scyne Values (#486) */}
+              <div className="space-y-2">
+                <label className="text-[12px] font-bold flex items-center gap-1.5"><Tag size={13} /> Scyne Values <span className="text-muted-text font-normal">(tags)</span></label>
+                <ChipMultiSelect options={SCYNE_VALUES.map((v) => v.name)} selected={values} onToggle={toggle(setValues)} />
+              </div>
+
+              {/* Metrics (#482) */}
+              <div className="space-y-2">
+                <label className="text-[12px] font-bold flex items-center gap-1.5"><Percent size={13} /> Measurements <span className="text-muted-text font-normal">(at least one)</span></label>
+                {metrics.map((m, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <input value={m.name} onChange={(e) => setMetrics((p) => p.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} placeholder="Metric name" className="flex-1 border border-border rounded-[4px] px-2 py-1.5 text-[12px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
+                    <input value={m.target} onChange={(e) => setMetrics((p) => p.map((x, j) => j === i ? { ...x, target: e.target.value } : x))} placeholder="Target" className="w-16 border border-border rounded-[4px] px-2 py-1.5 text-[12px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
+                    <input value={m.unit} onChange={(e) => setMetrics((p) => p.map((x, j) => j === i ? { ...x, unit: e.target.value } : x))} placeholder="Unit" className="w-14 border border-border rounded-[4px] px-2 py-1.5 text-[12px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
+                    {metrics.length > 1 && <button onClick={() => setMetrics((p) => p.filter((_, j) => j !== i))} className="text-muted-text hover:text-red-600"><Trash2 size={14} /></button>}
+                  </div>
+                ))}
+                <button onClick={() => setMetrics((p) => [...p, { name: '', target: '', unit: '%' }])} className="text-[11px] font-medium text-primary-action hover:underline flex items-center gap-1"><Plus size={12} /> Add measurement</button>
+              </div>
+
+              {/* Progress type (#490) */}
+              <div className="space-y-2">
+                <label className="text-[12px] font-bold">Progress Tracking Type</label>
+                <div className="flex gap-2">
+                  {['Percentage', 'Status', 'Both'].map((p) => (
+                    <button key={p} onClick={() => setProgressType(p)} className={cn('flex-1 py-1.5 rounded-[4px] border text-[11px] font-medium transition-all', progressType === p ? 'bg-indigo-50 border-primary-action text-primary-action' : 'bg-white border-border text-muted-text hover:bg-gray-50')}>{p}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Alignment (#482 link activities) */}
+              <div className="space-y-2">
+                <label className="text-[12px] font-bold flex items-center gap-1.5"><Link2 size={13} /> Aligned Company Goal</label>
+                <select className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary-action">
+                  {COMPANY_GOALS.map((g) => <option key={g.id}>{g.title}</option>)}
+                </select>
+                <label className="text-[12px] font-medium mt-2 block">Linked Activities</label>
+                <ChipMultiSelect options={['Docs Portal Project', 'Q2 Partner Onboarding', 'Checkout Optimisation', 'Grad Mentorship Program']} selected={activities} onToggle={toggle(setActivities)} />
+              </div>
+
+              {/* Skills Passport entities — full CRUD (#487) */}
+              <div className="space-y-2">
+                <label className="text-[12px] font-bold flex items-center gap-1.5"><Award size={13} /> Skills Passport Entities</label>
+                <SkillsPassportManager />
+              </div>
+
+              {/* Link received feedback (#482) */}
+              <div className="space-y-2">
+                <label className="text-[12px] font-bold flex items-center gap-1.5"><MessageSquare size={13} /> Link Received Feedback</label>
+                <ChipMultiSelect options={['Alex Reid — Mobile launch leadership', 'Anonymous Peer — Status updates', 'Nik Maniya — Q1 planning']} selected={linkedFeedback} onToggle={toggle(setLinkedFeedback)} />
+              </div>
+
+              {/* Milestones (#482) */}
+              <div className="space-y-2">
+                <label className="text-[12px] font-bold flex items-center gap-1.5"><Flag size={13} /> Milestones <span className="text-muted-text font-normal">(optional)</span></label>
+                {milestones.map((m, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <input value={m.description} onChange={(e) => setMilestones((p) => p.map((x, j) => j === i ? { ...x, description: e.target.value } : x))} placeholder="Milestone description" className="flex-1 border border-border rounded-[4px] px-2 py-1.5 text-[12px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
+                    <input type="date" value={m.targetDate} onChange={(e) => setMilestones((p) => p.map((x, j) => j === i ? { ...x, targetDate: e.target.value } : x))} className="border border-border rounded-[4px] px-2 py-1.5 text-[12px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
+                    <button onClick={() => setMilestones((p) => p.filter((_, j) => j !== i))} className="text-muted-text hover:text-red-600"><Trash2 size={14} /></button>
+                  </div>
+                ))}
+                <button onClick={() => setMilestones((p) => [...p, { description: '', targetDate: '' }])} className="text-[11px] font-medium text-primary-action hover:underline flex items-center gap-1"><Plus size={12} /> Add milestone</button>
+              </div>
+
+              {/* Visibility (#484) */}
+              <div className="space-y-2">
+                <label className="text-[12px] font-bold flex items-center gap-1.5"><Eye size={13} /> Visibility</label>
+                <select value={visibility} onChange={(e) => setVisibility(e.target.value)} className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary-action">
+                  {GOAL_VISIBILITY_OPTIONS.map((o) => <option key={o.value}>{o.value}</option>)}
+                </select>
+                <p className="text-[11px] text-muted-text bg-gray-50 border border-border rounded-[4px] p-2 leading-relaxed">{visBlurb}</p>
+                <div className="bg-gray-50 border border-border rounded-[4px] p-2">
+                  <span className="text-[10px] uppercase tracking-wider text-muted-text font-bold">Rules applied</span>
+                  <div className="mt-1"><VisibilityRules visibility={visibility} /></div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-border flex items-center gap-3">
+              <button onClick={onClose} className="btn-primary flex-1">Submit for Approval</button>
+              <button onClick={onClose} className="btn-outline flex-1">Save as Draft</button>
+            </div>
+          </motion.div>
+        </>
       )}
-      style={outlier ? { boxShadow: 'inset 3px 0 0 #F59E0B' } : {}}
-    >
-      <td className="sticky left-0 bg-inherit z-5 border-r border-border px-3">
-        <div className="flex items-center gap-2.5">
-          {row.flagged && <span className="text-[#F59E0B] text-[11px]">🚩</span>}
-          {row.locked && <Lock size={10} className="text-[#9CA3AF]" />}
-          <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0" style={{ backgroundColor: row.avatarColor }}>
-            {row.initials}
-          </div>
-          <div className="min-w-0">
-            <p className="text-[13px] font-bold text-[#18181B] truncate hover:text-primary-action cursor-pointer" onClick={() => viewIn9Box(row.name)}>{row.name}</p>
-            <p className="text-[11px] text-[#71717A] truncate">{row.role}</p>
-          </div>
-        </div>
-      </td>
-      <td className="px-3 text-[12px] text-[#52525B]">{row.dept}</td>
-      <td className="px-3">
-        <span className={cn("cal-position-badge", `cal-position--${row.position}`)}>
-          {row.positionLabel}
-        </span>
-      </td>
-      <td className="px-3">
-        <div className="flex items-center gap-1.5">
-          <span className="text-[13px] font-bold text-[#18181B]">{row.systemScore}</span>
-          <Badge status={row.systemLabel} />
-        </div>
-      </td>
-      <td className="px-3">
-        <div className="flex items-center gap-1.5">
-          <Badge status={row.mgrProposed} />
-          {row.mgrProposed === row.systemLabel ? (
-            <CheckCircle2 size={12} className="text-[#16A34A]" title="Matches system score" />
-          ) : Math.abs(labelToScore[row.mgrProposed] - labelToScore[row.systemLabel]) === 1 ? (
-            <AlertTriangle size={12} className="text-[#D97706]" title="Minor variance" />
-          ) : (
-            <AlertOctagon size={12} className="text-[#DC2626]" title="Large variance — review recommended" />
-          )}
-        </div>
-      </td>
-      <td className="px-3 py-1.5">
-        <div className="flex flex-col items-center">
-          <input 
-            type="number" 
-            className={cn(
-              "cal-consensus-input",
-              row.locked && "bg-[#F9FAFB] text-[#9CA3AF] border-solid cursor-not-allowed"
-            )}
-            min="1" max="5" step="0.1"
-            value={row.consensus || ''}
-            placeholder="—"
-            onChange={(e) => onConsensusChange(row.id, e.target.value)}
-            onBlur={handleBlur}
-            disabled={row.locked}
-          />
-          <span className={cn(
-            "text-[10px] italic mt-0.5",
-            saveStatus ? "text-[#16A34A] font-bold" : "text-[#9CA3AF]"
-          )}>
-            {saveStatus || (row.consensus ? `→ ${scoreToLabel(row.consensus)}` : '')}
-          </span>
-        </div>
-      </td>
-      <td className="px-3 text-center">
-        <span className={cn(
-          "text-[13px]",
-          variance > 1.5 || variance < -1.5 ? "text-[#DC2626] font-bold" :
-          variance > 0 ? "text-[#D97706]" :
-          variance < 0 ? "text-primary-action" : "text-[#16A34A]"
-        )}>
-          {variance > 0 ? '+' : ''}{variance.toFixed(1)}
-        </span>
-      </td>
-      <td className="px-3 py-1.5">
-        <textarea 
-          className={cn(
-            "cal-notes-input",
-            row.locked && "bg-[#F9FAFB] text-[#9CA3AF] border-solid cursor-not-allowed"
-          )}
-          rows={1}
-          placeholder="Add calibration note..."
-          value={row.notes}
-          onChange={(e) => onNotesChange(row.id, e.target.value)}
-          onBlur={handleBlur}
-          disabled={row.locked}
-          onInput={(e: any) => {
-            e.target.style.height = 'auto';
-            e.target.style.height = Math.min(e.target.scrollHeight, 58) + 'px';
-          }}
-        />
-      </td>
-      <td className="px-3"><Badge status={row.status} /></td>
-      <td className="px-2 text-center relative">
-        <button 
-          onClick={() => setIsMenuOpen(!isMenuOpen)}
-          className="p-1 rounded-[4px] text-[#9CA3AF] hover:bg-[#F4F4F5] hover:text-[#52525B] transition-colors"
-        >
-          <MoreVertical size={14} />
-        </button>
-        <AnimatePresence>
-          {isMenuOpen && (
-            <>
-              <div className="fixed inset-0 z-[90]" onClick={() => setIsMenuOpen(false)} />
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                className="absolute right-0 top-full mt-1 bg-white border border-border rounded-[4px] shadow-lg min-w-[160px] z-[100] overflow-hidden"
-              >
-                {!row.locked ? (
-                  <>
-                    <button onClick={() => { toggleLock(row.id); setIsMenuOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-[12px] hover:bg-[#F4F4F5] text-[#18181B]"><Lock size={12} /> Lock this row</button>
-                    <button onClick={() => { resetToSystem(row.id); setIsMenuOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-[12px] hover:bg-[#F4F4F5] text-[#18181B]"><RotateCcw size={12} /> Reset to system score</button>
-                    <button onClick={() => { viewIn9Box(row.name); setIsMenuOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-[12px] hover:bg-[#F4F4F5] text-primary-action font-medium"><Grid size={12} /> View in 9-Box</button>
-                    <button onClick={() => { toggleFlag(row.id); setIsMenuOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-[12px] hover:bg-[#F4F4F5] text-[#F59E0B] font-medium"><Flag size={12} /> Flag for discussion</button>
-                    <button className="w-full flex items-center gap-2 px-3 py-2 text-[12px] hover:bg-[#F4F4F5] text-[#18181B]"><User size={12} /> View full profile</button>
-                  </>
-                ) : (
-                  <>
-                    <button onClick={() => { toggleLock(row.id); setIsMenuOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-[12px] hover:bg-[#F4F4F5] text-[#18181B]"><Unlock size={12} /> Unlock this row</button>
-                    <button onClick={() => { viewIn9Box(row.name); setIsMenuOpen(false); }} className="w-full flex items-center gap-2 px-3 py-2 text-[12px] hover:bg-[#F4F4F5] text-primary-action font-medium"><Grid size={12} /> View in 9-Box</button>
-                    <button className="w-full flex items-center gap-2 px-3 py-2 text-[12px] hover:bg-[#F4F4F5] text-[#18181B]"><User size={12} /> View full profile</button>
-                  </>
-                )}
-              </motion.div>
-            </>
-          )}
-        </AnimatePresence>
-      </td>
-    </tr>
+    </AnimatePresence>
+  );
+};
+
+// --- D365 Import Modal (REQ1 #481) ---
+const D365ImportModal = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
+  const [selected, setSelected] = useState<string[]>(D365_IMPORT_GOALS.map((g) => g.id));
+  const toggle = (id: string) => setSelected((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]);
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="fixed inset-0 bg-black/30 z-40 backdrop-blur-sm" />
+          <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }} className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[560px] bg-white rounded-[8px] shadow-xl z-50 flex flex-col max-h-[80vh]">
+            <div className="p-5 border-b border-border flex items-center justify-between">
+              <div className="flex items-center gap-2"><Upload size={16} className="text-primary-action" /><h3 className="font-bold text-[15px]">Import Goals from Dynamics 365</h3></div>
+              <button onClick={onClose} className="text-muted-text hover:text-primary-text"><X size={18} /></button>
+            </div>
+            <div className="p-5 overflow-y-auto space-y-2">
+              <p className="text-[12px] text-muted-text mb-3">We found {D365_IMPORT_GOALS.length} historical goals in D365. Select which to bring into Scyne — progress and status are preserved.</p>
+              {D365_IMPORT_GOALS.map((g) => (
+                <label key={g.id} className="flex items-center gap-3 p-2.5 border border-border rounded-[4px] hover:bg-gray-50 cursor-pointer">
+                  <input type="checkbox" checked={selected.includes(g.id)} onChange={() => toggle(g.id)} className="accent-[#464E7E]" />
+                  <div className="flex-1">
+                    <div className="font-medium text-[13px]">{g.title}</div>
+                    <div className="text-[11px] text-muted-text">{g.period} • {g.progress}% complete</div>
+                  </div>
+                  <Badge status={g.status as Status} />
+                </label>
+              ))}
+            </div>
+            <div className="p-5 border-t border-border flex items-center justify-between">
+              <span className="text-[12px] text-muted-text">{selected.length} selected</span>
+              <div className="flex gap-2">
+                <button onClick={onClose} className="btn-outline">Cancel</button>
+                <button onClick={onClose} className="btn-primary flex items-center gap-2"><Download size={14} /> Import {selected.length} Goals</button>
+              </div>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
   );
 };
 
 const MyGoalsView = () => {
   const [activeTab, setActiveTab] = useState('My Goals');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [goals, setGoals] = useState<Goal[]>(MY_GOALS);
+
+  const setStatus = (id: string, status: Status) =>
+    setGoals((prev) => prev.map((g) => g.id === id ? { ...g, status, progress: status === 'Completed' ? 100 : g.progress } : g));
+
+  // Aggregated progress history across goals, most recent first (Check-Ins)
+  const allUpdates = goals
+    .flatMap((g) => (g.progressHistory || []).map((u) => ({ ...u, goalTitle: g.title })))
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
+
+  // Activity log (#491)
+  const activity = [
+    { icon: <UserPlus size={13} />, text: 'Team Leader Alex Reid reviewed and updated "Launch new API documentation portal"', date: '2026-06-11 10:05', tone: 'review' },
+    { icon: <TrendingUp size={13} />, text: 'You updated progress on "Launch new API documentation portal" to 70%', date: '2026-06-10 11:30', tone: 'progress' },
+    { icon: <CheckCircle2 size={13} />, text: 'You completed "Complete Advanced Leadership certification"', date: '2026-03-28 17:00', tone: 'complete' },
+    { icon: <FileText size={13} />, text: 'You edited the description of "Mentor 2 junior PMs"', date: '2026-04-18 16:42', tone: 'edit' },
+    { icon: <Download size={13} />, text: 'Imported "Reduce checkout drop-off by 15%" from Dynamics 365', date: '2026-04-01 09:00', tone: 'import' },
+  ];
 
   return (
     <div className="space-y-6">
@@ -3317,151 +3236,196 @@ const MyGoalsView = () => {
           >
             {tab}
             {activeTab === tab && (
-              <motion.div 
-                layoutId="activeTabMyGoals"
-                className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-action" 
-              />
+              <motion.div layoutId="activeTabMyGoals" className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-action" />
             )}
           </button>
         ))}
       </div>
 
-      <div className="space-y-4">
-        <div className="bg-amber-50 border border-amber-200 rounded-[4px] p-3 flex items-center gap-3 text-amber-800">
-          <AlertCircle size={16} className="flex-shrink-0" />
-          <span className="text-[12px] font-medium">Your goals are pending manager approval. Reviews will unlock once approved.</span>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <button className="btn-outline">Time Period</button>
-            <button className="btn-outline">Status</button>
+      {activeTab === 'My Goals' && (
+        <div className="space-y-4">
+          <div className="bg-amber-50 border border-amber-200 rounded-[4px] p-3 flex items-center gap-3 text-amber-800">
+            <AlertCircle size={16} className="flex-shrink-0" />
+            <span className="text-[12px] font-medium">Some of your goals are pending manager approval. Reviews will unlock once approved.</span>
           </div>
-          <button onClick={() => setIsDrawerOpen(true)} className="btn-primary flex items-center gap-2">
-            <Plus size={14} />
-            Add Goal
-          </button>
-        </div>
 
-        <div className="card p-0 overflow-x-auto">
-          <table className="w-full border-collapse min-w-[800px]">
-            <thead>
-              <tr>
-                <th className="table-header w-12 text-center">#</th>
-                <th className="table-header">Goal Title</th>
-                <th className="table-header">Aligned To</th>
-                <th className="table-header">Weight %</th>
-                <th className="table-header">Progress</th>
-                <th className="table-header">Last Check-In</th>
-                <th className="table-header">Status</th>
-                <th className="table-header w-12"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {COMPANY_GOALS.slice(0, 4).map((goal, i) => (
-                <tr key={goal.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="table-cell text-center text-muted-text">{i + 1}</td>
-                  <td className="table-cell font-medium">{goal.title}</td>
-                  <td className="table-cell text-primary-action cursor-pointer hover:underline">Company Goal #{i + 1}</td>
-                  <td className="table-cell">25%</td>
-                  <td className="table-cell">
-                    <div className="flex items-center gap-2">
-                      <ProgressBar progress={goal.progress} />
-                      <span className="text-[11px] font-medium">{goal.progress}%</span>
-                    </div>
-                  </td>
-                  <td className="table-cell text-muted-text">Mar 28, 2026 🟢</td>
-                  <td className="table-cell"><Badge status="Pending Approval" /></td>
-                  <td className="table-cell text-right">
-                    <button className="text-muted-text hover:text-primary-text">
-                      <MoreVertical size={16} />
-                    </button>
-                  </td>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <button className="btn-outline">Time Period</button>
+              <button className="btn-outline">Status</button>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setIsImportOpen(true)} className="btn-outline flex items-center gap-2"><Upload size={14} /> Import D365 Goals</button>
+              <button onClick={() => setIsDrawerOpen(true)} className="btn-primary flex items-center gap-2"><Plus size={14} /> Add Goal</button>
+            </div>
+          </div>
+
+          <div className="card p-0 overflow-x-auto">
+            <table className="w-full border-collapse min-w-[980px]">
+              <thead>
+                <tr>
+                  <th className="table-header w-12 text-center">#</th>
+                  <th className="table-header">Goal</th>
+                  <th className="table-header">Type</th>
+                  <th className="table-header">Wt%</th>
+                  <th className="table-header">Progress</th>
+                  <th className="table-header">Milestones</th>
+                  <th className="table-header">Risk</th>
+                  <th className="table-header">Last Check-In</th>
+                  <th className="table-header">Status</th>
+                  <th className="table-header w-10"></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {goals.map((goal, i) => {
+                  const risk = goalRisk(goal);
+                  const ms = goal.milestones || [];
+                  const msDone = ms.filter((m) => m.completed).length;
+                  const lastUpdate = (goal.progressHistory || [])[(goal.progressHistory || []).length - 1];
+                  return (
+                    <tr key={goal.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="table-cell text-center text-muted-text">{i + 1}</td>
+                      <td className="table-cell">
+                        <div className="font-medium">{goal.title}</div>
+                        <div className="flex items-center gap-1.5 mt-1">
+                          {goal.source === 'D365 Import' && <span className="text-[9px] uppercase tracking-wider bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">D365</span>}
+                          {goal.visibility === 'Owner Only' ? (
+                            <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded flex items-center gap-0.5" title="Private — excluded from manager review, reporting and search"><Eye size={9} /> Owner only · excluded from search</span>
+                          ) : (
+                            <span className="text-[10px] text-muted-text flex items-center gap-0.5"><Eye size={9} /> {goal.visibility}</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="table-cell">
+                        <div className="flex flex-wrap gap-1">
+                          {(goal.goalTypes || []).map((t) => <span key={t} className="text-[9px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded">{t}</span>)}
+                        </div>
+                      </td>
+                      <td className="table-cell">{goal.weight}%</td>
+                      <td className="table-cell w-40">
+                        <div className="flex items-center gap-2">
+                          <ProgressBar progress={goal.progress} />
+                          <span className="text-[11px] font-medium">{goal.progress}%</span>
+                        </div>
+                      </td>
+                      <td className="table-cell text-[11px] text-muted-text">{ms.length ? `${msDone}/${ms.length}` : '—'}</td>
+                      <td className="table-cell">
+                        {risk.atRisk ? (
+                          <span className={cn('inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded', risk.overdue ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700')}>
+                            <AlertTriangle size={10} /> {risk.label}
+                          </span>
+                        ) : <span className="text-[11px] text-green-600">On track</span>}
+                      </td>
+                      <td className="table-cell text-muted-text text-[11px]">{lastUpdate ? lastUpdate.date.split(' ')[0] : '—'}</td>
+                      <td className="table-cell">
+                        <select
+                          value={goal.status}
+                          onChange={(e) => setStatus(goal.id, e.target.value as Status)}
+                          className="cal-group-select text-[11px] py-1"
+                        >
+                          {PROGRESS_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </td>
+                      <td className="table-cell text-right">
+                        <button className="text-muted-text hover:text-primary-text"><MoreVertical size={16} /></button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Goal Creation Drawer */}
-      <AnimatePresence>
-        {isDrawerOpen && (
-          <>
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsDrawerOpen(false)}
-              className="fixed inset-0 bg-black/20 z-40 backdrop-blur-sm"
-            />
-            <motion.div 
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed right-0 top-0 bottom-0 w-full max-w-[420px] bg-white shadow-xl z-50 flex flex-col"
-            >
-              <div className="p-6 border-b border-border flex items-center justify-between">
-                <h3 className="font-bold text-[16px]">Create New Goal</h3>
-                <button onClick={() => setIsDrawerOpen(false)} className="text-muted-text hover:text-primary-text">
-                  <Plus size={20} className="rotate-45" />
-                </button>
-              </div>
-              
-              <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                <div className="space-y-2">
-                  <span className="text-[11px] font-bold text-muted-text uppercase tracking-wider">Step 1 of 3 — Alignment</span>
-                  <div className="space-y-4">
-                    <div className="space-y-1">
-                      <label className="text-[12px] font-medium">Select Company Goal</label>
-                      <select className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary-action">
-                        <option>Grow ARR to $50M by EOY</option>
-                        <option>Achieve NPS &gt; 65</option>
-                      </select>
-                    </div>
+      {activeTab === 'Check-Ins' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-[14px]">Progress Updates &amp; History</h3>
+            <button onClick={() => setIsDrawerOpen(false)} className="btn-primary flex items-center gap-2"><Plus size={14} /> Add Check-In</button>
+          </div>
+          <div className="card space-y-0 p-0">
+            {allUpdates.map((u, i) => (
+              <div key={u.id + i} className="flex items-start gap-3 p-4 border-b border-border last:border-0">
+                <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center flex-shrink-0"><TrendingUp size={14} /></div>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-[13px]">{u.goalTitle}</span>
+                    <span className="text-[11px] text-muted-text">{u.date}</span>
                   </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="space-y-1">
-                    <label className="text-[12px] font-medium">Goal Title</label>
-                    <input type="text" placeholder="e.g. Launch new API documentation" className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
+                  <div className="flex items-center gap-2 mt-1 mb-1">
+                    <span className="text-[11px] font-bold text-primary-action">{u.value}%</span>
+                    {u.status && <Badge status={u.status} />}
+                    <span className="text-[11px] text-muted-text">by {u.by}</span>
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-[12px] font-medium">Description</label>
-                    <textarea rows={3} className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[12px] font-medium">Weight %</label>
-                      <input type="number" defaultValue={25} className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[12px] font-medium">Due Date</label>
-                      <input type="date" className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
-                    </div>
-                  </div>
+                  {u.note && <p className="text-[12px] text-muted-text italic">"{u.note}"</p>}
                 </div>
               </div>
+            ))}
+          </div>
+        </div>
+      )}
 
-              <div className="p-6 border-t border-border flex items-center gap-3">
-                <button onClick={() => setIsDrawerOpen(false)} className="btn-primary flex-1">Submit for Approval</button>
-                <button onClick={() => setIsDrawerOpen(false)} className="btn-outline flex-1">Save as Draft</button>
+      {activeTab === 'Goal History' && (
+        <div className="space-y-4">
+          <h3 className="font-semibold text-[14px]">Activity Log</h3>
+          <div className="card p-0">
+            {activity.map((a, i) => (
+              <div key={i} className="flex items-center gap-3 p-3 border-b border-border last:border-0">
+                <div className={cn('w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0',
+                  a.tone === 'review' ? 'bg-blue-50 text-blue-600' : a.tone === 'complete' ? 'bg-green-50 text-green-600' : a.tone === 'import' ? 'bg-purple-50 text-purple-600' : 'bg-gray-100 text-gray-500')}>
+                  {a.icon}
+                </div>
+                <span className="flex-1 text-[12.5px]">{a.text}</span>
+                <span className="text-[11px] text-muted-text whitespace-nowrap">{a.date}</span>
               </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <GoalCreationDrawer open={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />
+      <D365ImportModal open={isImportOpen} onClose={() => setIsImportOpen(false)} />
     </div>
   );
 };
 
 const TeamGoalsView = () => {
   const [selectedMember, setSelectedMember] = useState(EMPLOYEES[0]);
+  const reviewGoals = MY_GOALS.slice(0, 3);
+  // Per-goal review status keyed by goal id (#483 review workflow)
+  const [reviewStatus, setReviewStatus] = useState<Record<string, Status>>({ g1: 'Pending Approval', g2: 'Pending Approval', g3: 'Pending Approval' });
+  const [commentFor, setCommentFor] = useState<string | null>(null);
+  const [commentText, setCommentText] = useState('');
+  // Audit trail of comments & actions (#483)
+  const [auditTrail, setAuditTrail] = useState([
+    { id: 'a1', by: 'Alex Reid', role: 'Team Leader', date: '2026-06-11 10:05', text: 'Strong alignment to the mobile platform goal. Approving.', action: 'Approved', goal: 'Launch new API documentation portal' },
+    { id: 'a2', by: 'Alex Reid', role: 'Team Leader', date: '2026-06-09 14:20', text: 'Please add a measurable target for the second mentee.', action: 'Changes Requested', goal: 'Mentor 2 junior PMs' },
+  ]);
+
+  const act = (goalId: string, goalTitle: string, action: Status) => {
+    setReviewStatus((p) => ({ ...p, [goalId]: action }));
+    setAuditTrail((p) => [{ id: 'a' + (p.length + 1), by: 'Alex Reid', role: 'Team Leader', date: '2026-06-23 09:00', text: `Marked as ${action}.`, action, goal: goalTitle }, ...p]);
+  };
+
+  const submitComment = (goalTitle: string) => {
+    if (!commentText.trim()) return;
+    setAuditTrail((p) => [{ id: 'a' + (p.length + 1), by: 'Alex Reid', role: 'Team Leader', date: '2026-06-23 09:00', text: commentText, action: 'Comment', goal: goalTitle }, ...p]);
+    setCommentText('');
+    setCommentFor(null);
+  };
+
+  const submissionStatus: Status = Object.values(reviewStatus).every((s) => s === 'Approved') ? 'Approved'
+    : Object.values(reviewStatus).some((s) => s === 'Rejected') ? 'Rejected'
+    : Object.values(reviewStatus).some((s) => s === 'Changes Requested') ? 'Changes Requested' : 'Pending Approval';
 
   return (
     <div className="space-y-6">
+      <div className="bg-indigo-50 border border-indigo-100 rounded-[4px] p-3 flex items-center gap-3 text-indigo-800">
+        <Bell size={15} className="flex-shrink-0" />
+        <span className="text-[12px] font-medium">Goal review cycle <strong>Q2 2026</strong> is open. Employees are notified when you review or update their goals.</span>
+      </div>
+
       <div className="card space-y-4">
         <h3 className="font-semibold text-[14px]">Company Goal Coverage — Your Team</h3>
         <div className="overflow-x-auto">
@@ -3489,7 +3453,7 @@ const TeamGoalsView = () => {
       </div>
 
       <div className="grid grid-cols-12 gap-6">
-        <div className="col-span-4 space-y-4">
+        <div className="col-span-12 lg:col-span-4 space-y-4">
           <h3 className="font-semibold text-[14px]">Team Members</h3>
           <div className="card p-0 overflow-hidden">
             {EMPLOYEES.slice(0, 5).map((member) => (
@@ -3516,114 +3480,68 @@ const TeamGoalsView = () => {
           </div>
         </div>
 
-        <div className="col-span-8 space-y-4">
-          <div className="flex items-center justify-between">
+        <div className="col-span-12 lg:col-span-8 space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <div>
-              <h3 className="font-semibold text-[14px]">{selectedMember.name}'s Goals</h3>
+              <h3 className="font-semibold text-[14px] flex items-center gap-2">{selectedMember.name}'s Goal Submission <Badge status={submissionStatus} /></h3>
               <p className="text-[12px] text-muted-text">{selectedMember.role} • {selectedMember.department}</p>
             </div>
             <div className="flex items-center gap-2">
-              <button className="btn-primary bg-green-600 hover:bg-green-700">Approve All</button>
-              <button className="btn-outline">Request Changes</button>
+              <button onClick={() => setReviewStatus({ g1: 'Approved', g2: 'Approved', g3: 'Approved' })} className="btn-primary bg-green-600 hover:bg-green-700">Approve All</button>
+              <button onClick={() => reviewGoals.forEach((g) => act(g.id, g.title, 'Changes Requested'))} className="btn-outline">Request Changes</button>
             </div>
           </div>
-          <div className="card p-0 overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr>
-                  <th className="table-header">Goal Title</th>
-                  <th className="table-header">Progress</th>
-                  <th className="table-header">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {COMPANY_GOALS.slice(0, 3).map((goal) => (
-                  <tr key={goal.id}>
-                    <td className="table-cell font-medium">{goal.title}</td>
-                    <td className="table-cell w-32">
-                      <ProgressBar progress={goal.progress} />
-                    </td>
-                    <td className="table-cell"><Badge status="Pending Approval" /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+
+          {/* Goal-level review actions (#483) */}
+          <div className="card p-0 overflow-hidden">
+            {reviewGoals.map((goal) => (
+              <div key={goal.id} className="p-3 border-b border-border last:border-0">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex-1 min-w-[180px]">
+                    <div className="font-medium text-[13px]">{goal.title}</div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <ProgressBar progress={goal.progress} className="w-28" />
+                      <span className="text-[11px] text-muted-text">{goal.progress}%</span>
+                      <Badge status={reviewStatus[goal.id]} />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button onClick={() => act(goal.id, goal.title, 'Approved')} title="Approve" className="p-1.5 rounded border border-green-200 text-green-600 hover:bg-green-50"><Check size={14} /></button>
+                    <button onClick={() => act(goal.id, goal.title, 'Changes Requested')} title="Request changes" className="p-1.5 rounded border border-amber-200 text-amber-600 hover:bg-amber-50"><RotateCcw size={14} /></button>
+                    <button onClick={() => act(goal.id, goal.title, 'Rejected')} title="Reject" className="p-1.5 rounded border border-red-200 text-red-600 hover:bg-red-50"><X size={14} /></button>
+                    <button onClick={() => setCommentFor(commentFor === goal.id ? null : goal.id)} title="Comment" className="p-1.5 rounded border border-border text-muted-text hover:bg-gray-50"><MessageSquare size={14} /></button>
+                  </div>
+                </div>
+                {commentFor === goal.id && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <input value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="Add a comment for the employee…" className="flex-1 border border-border rounded-[4px] px-2 py-1.5 text-[12px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
+                    <button onClick={() => submitComment(goal.title)} className="btn-primary py-1.5"><Send size={13} /></button>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
-        </div>
-      </div>
-    </div>
-  );
-};
 
-const AnalyticsView = ({ openChatbot }: { openChatbot: (trigger: string) => void }) => {
-  const data = [
-    { name: 'Engineering', completion: 85, reviews: 70 },
-    { name: 'Product', completion: 92, reviews: 88 },
-    { name: 'Marketing', completion: 78, reviews: 65 },
-    { name: 'Sales', completion: 60, reviews: 45 },
-    { name: 'Operations', completion: 72, reviews: 60 },
-  ];
-
-  const trendData = [
-    { name: 'Q1', score: 3.8 },
-    { name: 'Q2', score: 3.9 },
-    { name: 'Q3', score: 4.1 },
-    { name: 'Q4', score: 4.2 },
-  ];
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <button className="btn-outline">Department</button>
-        <button className="btn-outline">Time Period</button>
-        <div className="flex-1" />
-        <button className="btn-outline flex items-center gap-2">
-          <ArrowUpRight size={14} />
-          Export Report
-        </button>
-        <button 
-          onClick={() => openChatbot('ANALYTICS')}
-          className="p-2 bg-indigo-50 text-indigo-600 rounded-[4px] hover:bg-indigo-100 transition-all border border-indigo-100"
-        >
-          <Sparkles size={16} />
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="card space-y-4">
-          <h3 className="font-semibold text-[14px]">Goal Completion Rate by Department</h3>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
-                <XAxis type="number" hide />
-                <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} fontSize={11} width={80} />
-                <RechartsTooltip cursor={{ fill: '#f9fafb' }} contentStyle={{ fontSize: '12px', borderRadius: '4px' }} />
-                <Bar dataKey="completion" fill="#3B4FD8" radius={[0, 4, 4, 0]} barSize={20} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="card space-y-4">
-          <h3 className="font-semibold text-[14px]">Performance Distribution</h3>
-          <div className="pt-4">
-            <BellCurveChart />
-          </div>
-        </div>
-
-        <div className="card lg:col-span-2 space-y-4">
-          <h3 className="font-semibold text-[14px]">Performance Trend (Overall)</h3>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trendData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} fontSize={11} />
-                <YAxis axisLine={false} tickLine={false} fontSize={11} domain={[3, 5]} />
-                <RechartsTooltip contentStyle={{ fontSize: '12px', borderRadius: '4px' }} />
-                <Line type="monotone" dataKey="score" stroke="#3B4FD8" strokeWidth={2} dot={{ r: 4, fill: '#3B4FD8' }} activeDot={{ r: 6 }} />
-              </LineChart>
-            </ResponsiveContainer>
+          {/* Audit trail (#483) */}
+          <div className="card space-y-3">
+            <h3 className="font-bold text-[13px] flex items-center gap-1.5"><History size={13} /> Comments &amp; Audit Trail</h3>
+            <div className="space-y-0">
+              {auditTrail.map((c) => (
+                <div key={c.id} className="flex items-start gap-3 py-2.5 border-b border-border last:border-0">
+                  <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">AR</div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[12px] font-bold">{c.by}</span>
+                      <span className="text-[10px] text-muted-text">{c.role}</span>
+                      {c.action && c.action !== 'Comment' && <Badge status={c.action as Status} />}
+                      <span className="text-[11px] text-muted-text">{c.date}</span>
+                    </div>
+                    <p className="text-[12px] mt-0.5">{c.text}</p>
+                    <p className="text-[10px] text-muted-text italic mt-0.5">on "{c.goal}"</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -3632,70 +3550,268 @@ const AnalyticsView = ({ openChatbot }: { openChatbot: (trigger: string) => void
 };
 
 const GoalDetailView = ({ onBack }: { onBack: () => void }) => {
+  const base = MY_GOALS[0];
+  const [progress, setProgress] = useState(base.progress);
+  const [status, setStatusState] = useState<Status>(base.status);
+  const [milestones, setMilestones] = useState(base.milestones || []);
+  const [history, setHistory] = useState(base.progressHistory || []);
+  const [newValue, setNewValue] = useState(base.progress);
+  const [newStatus, setNewStatus] = useState<Status>(base.status);
+  const [newNote, setNewNote] = useState('');
+
+  const risk = goalRisk({ ...base, progress, status });
+
+  const addUpdate = () => {
+    setHistory((prev) => [...prev, { id: 'pn' + prev.length, date: '2026-06-23 09:00', value: newValue, status: newStatus, note: newNote || undefined, by: 'Sarah Chen' }]);
+    setProgress(newValue);
+    setStatusState(newStatus);
+    setNewNote('');
+  };
+
+  const toggleMilestone = (id: string) =>
+    setMilestones((prev) => prev.map((m) => m.id === id ? { ...m, completed: !m.completed } : m));
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2 text-muted-text text-[12px]">
-        <button onClick={onBack} className="hover:text-primary-text">Company Goals</button>
+      <div className="flex items-center gap-2 text-muted-text text-[12px] flex-wrap">
+        <button onClick={onBack} className="hover:text-primary-text">Goals</button>
         <ChevronRight size={12} />
-        <span className="text-primary-text font-medium">Grow ARR to $50M by EOY</span>
-        <Badge status="Active" />
+        <span className="text-primary-text font-medium">{base.title}</span>
+        <Badge status={status} />
+        {base.source === 'D365 Import' && <span className="text-[9px] uppercase tracking-wider bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">D365</span>}
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
+      {/* At Risk / Overdue banner (#482 Deadlines & Risk Indicators) */}
+      {risk.atRisk && (
+        <div className={cn('rounded-[4px] p-3 flex items-center gap-3 border', risk.overdue ? 'bg-red-50 border-red-200 text-red-800' : 'bg-amber-50 border-amber-200 text-amber-800')}>
+          <AlertTriangle size={16} className="flex-shrink-0" />
+          <span className="text-[12px] font-medium">{risk.overdue ? 'This goal is overdue.' : 'This goal is approaching its due date with low progress.'} {risk.label} — consider a check-in or status update.</span>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Key Results', value: '4' },
-          { label: 'Teams Aligned', value: '4' },
-          { label: 'Individuals', value: '42' },
-          { label: 'Overall Progress', value: '65%' },
+          { label: 'Overall Progress', value: `${progress}%` },
+          { label: 'Status', value: status },
+          { label: 'Weight', value: `${base.weight}%` },
+          { label: 'Target Date', value: fmtDate(base.dueDate) },
         ].map((stat, i) => (
           <div key={i} className="card">
             <span className="text-[11px] text-muted-text uppercase tracking-tight">{stat.label}</span>
-            <div className="text-[20px] font-bold mt-1">{stat.value}</div>
+            <div className="text-[18px] font-bold mt-1">{stat.value}</div>
           </div>
         ))}
       </div>
 
-      <div className="card space-y-6">
-        <div className="space-y-2">
-          <h3 className="font-bold text-[16px]">Goal Description</h3>
-          <p className="text-muted-text leading-relaxed">
-            Our primary objective for 2025 is to scale our Annual Recurring Revenue to $50M. 
-            This involves expanding into new markets, increasing upsell opportunities within our existing base, 
-            and maintaining a churn rate below 5%.
-          </p>
-        </div>
+      {/* Visual progress indicator */}
+      <div className="card space-y-2">
+        <div className="flex items-center justify-between text-[12px]"><span className="font-semibold">Progress</span><Badge status={status} /></div>
+        <ProgressBar progress={progress} className="h-2.5" />
+      </div>
 
-        <div className="space-y-4">
-          <h3 className="font-bold text-[14px]">Key Results</h3>
-          <div className="card p-0 overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 space-y-6">
+          <div className="card space-y-3">
+            <h3 className="font-bold text-[15px]">Goal Description</h3>
+            <p className="text-muted-text leading-relaxed text-[13px]">{base.description}</p>
+
+            {/* Tags: type, values, visibility */}
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {(base.goalTypes || []).map((t) => <span key={t} className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-medium">{t}</span>)}
+              {(base.scyneValues || []).map((v) => <span key={v} className="text-[10px] bg-teal-50 text-teal-700 px-2 py-0.5 rounded-full font-medium flex items-center gap-1"><Tag size={9} />{v}</span>)}
+              <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium flex items-center gap-1"><Eye size={9} />{base.visibility}</span>
+            </div>
+          </div>
+
+          {/* Measurements (#482) */}
+          <div className="card space-y-3">
+            <h3 className="font-bold text-[14px]">Measurements</h3>
             <table className="w-full border-collapse">
-              <thead>
-                <tr>
-                  <th className="table-header">KR Title</th>
-                  <th className="table-header">Target</th>
-                  <th className="table-header">Current</th>
-                  <th className="table-header">Progress</th>
-                  <th className="table-header">Owner</th>
-                </tr>
-              </thead>
+              <thead><tr><th className="table-header">Metric</th><th className="table-header">Current</th><th className="table-header">Target</th><th className="table-header">Progress</th></tr></thead>
               <tbody>
-                {[
-                  { title: 'New Logo ARR', target: '$15M', current: '$9.2M', progress: 61, owner: 'Alex Reid' },
-                  { title: 'Expansion ARR', target: '$10M', current: '$7.5M', progress: 75, owner: 'Sarah Chen' },
-                ].map((kr, i) => (
-                  <tr key={i}>
-                    <td className="table-cell font-medium">{kr.title}</td>
-                    <td className="table-cell">{kr.target}</td>
-                    <td className="table-cell">{kr.current}</td>
-                    <td className="table-cell w-32">
-                      <ProgressBar progress={kr.progress} />
-                    </td>
-                    <td className="table-cell text-muted-text">{kr.owner}</td>
+                {(base.metrics || []).map((m) => (
+                  <tr key={m.id}>
+                    <td className="table-cell font-medium">{m.name}</td>
+                    <td className="table-cell">{m.current}{m.unit}</td>
+                    <td className="table-cell">{m.target}{m.unit}</td>
+                    <td className="table-cell w-28"><ProgressBar progress={Math.round(((m.current || 0) / m.target) * 100)} /></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+
+          {/* Milestones (#482) */}
+          <div className="card space-y-3">
+            <h3 className="font-bold text-[14px] flex items-center gap-1.5"><Flag size={14} /> Milestones</h3>
+            <div className="space-y-2">
+              {milestones.map((m) => (
+                <label key={m.id} className="flex items-center gap-3 p-2 rounded-[4px] hover:bg-gray-50 cursor-pointer">
+                  <input type="checkbox" checked={m.completed} onChange={() => toggleMilestone(m.id)} className="accent-[#464E7E]" />
+                  <span className={cn('flex-1 text-[13px]', m.completed && 'line-through text-muted-text')}>{m.description}</span>
+                  <span className="text-[11px] text-muted-text">{fmtDate(m.targetDate)}</span>
+                </label>
+              ))}
+              {milestones.length === 0 && <p className="text-[12px] text-muted-text italic">No milestones defined.</p>}
+            </div>
+            <p className="text-[11px] text-muted-text">{milestones.filter((m) => m.completed).length} of {milestones.length} complete — contributes to overall progress.</p>
+          </div>
+
+          {/* Progress updates & history (#482) */}
+          <div className="card space-y-4">
+            <h3 className="font-bold text-[14px] flex items-center gap-1.5"><History size={14} /> Progress Updates &amp; History</h3>
+            <div className="bg-gray-50 border border-border rounded-[4px] p-3 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium">Progress %</label>
+                  <input type="number" min={0} max={100} value={newValue} onChange={(e) => setNewValue(Number(e.target.value))} className="w-full border border-border rounded-[4px] px-2 py-1.5 text-[12px] bg-white focus:outline-none focus:ring-1 focus:ring-primary-action" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium">Status</label>
+                  <select value={newStatus} onChange={(e) => setNewStatus(e.target.value as Status)} className="w-full border border-border rounded-[4px] px-2 py-1.5 text-[12px] bg-white focus:outline-none focus:ring-1 focus:ring-primary-action">
+                    {PROGRESS_STATUSES.map((s) => <option key={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
+              <textarea value={newNote} onChange={(e) => setNewNote(e.target.value)} rows={2} placeholder="Add a comment about this update (optional)" className="w-full border border-border rounded-[4px] px-2 py-1.5 text-[12px] bg-white focus:outline-none focus:ring-1 focus:ring-primary-action" />
+              <button onClick={addUpdate} className="btn-primary flex items-center gap-2"><Save size={13} /> Save Update</button>
+            </div>
+            <div className="space-y-0">
+              {[...history].reverse().map((u, i) => (
+                <div key={u.id + i} className="flex items-start gap-3 py-2.5 border-b border-border last:border-0">
+                  <Clock size={13} className="text-muted-text mt-0.5 flex-shrink-0" />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-bold text-primary-action">{u.value}%</span>
+                      {u.status && <Badge status={u.status} />}
+                      <span className="text-[11px] text-muted-text">{u.date} • {u.by}</span>
+                    </div>
+                    {u.note && <p className="text-[12px] text-muted-text italic mt-0.5">"{u.note}"</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Sidebar: linked items + review */}
+        <div className="space-y-6">
+          <div className="card space-y-3">
+            <h3 className="font-bold text-[13px] flex items-center gap-1.5"><Link2 size={13} /> Linked Items</h3>
+            <div>
+              <span className="text-[10px] uppercase tracking-wider text-muted-text">Skills</span>
+              <div className="flex flex-wrap gap-1 mt-1">{(base.linkedSkills || []).map((s) => <span key={s} className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{s}</span>)}</div>
+            </div>
+            <div>
+              <span className="text-[10px] uppercase tracking-wider text-muted-text">Activities</span>
+              <div className="flex flex-wrap gap-1 mt-1">{(base.linkedActivities || []).map((s) => <span key={s} className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{s}</span>)}</div>
+            </div>
+            <div>
+              <span className="text-[10px] uppercase tracking-wider text-muted-text">Linked Feedback</span>
+              <div className="flex flex-wrap gap-1 mt-1">{(base.linkedFeedback || []).length ? base.linkedFeedback!.map((f) => <span key={f} className="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded flex items-center gap-1"><MessageSquare size={9} />Alex Reid — recognition</span>) : <span className="text-[11px] text-muted-text italic">None</span>}</div>
+            </div>
+          </div>
+
+          {/* Performance review link (#502) */}
+          <div className="card space-y-2">
+            <h3 className="font-bold text-[13px] flex items-center gap-1.5"><ClipboardList size={13} /> Performance Review</h3>
+            {base.linkedReview ? (
+              <div className="flex items-center justify-between">
+                <span className="text-[12px]">{base.linkedReview}</span>
+                <button className="text-[11px] text-primary-action hover:underline flex items-center gap-1">Open <ExternalLink size={10} /></button>
+              </div>
+            ) : <span className="text-[11px] text-muted-text italic">Not linked to a review</span>}
+            <p className="text-[11px] text-muted-text">This goal's description, metrics and progress appear during the review discussion.</p>
+          </div>
+
+          {/* Visibility rules — enforced (#484 / #482 Leader Visibility) */}
+          <div className="card space-y-2">
+            <h3 className="font-bold text-[13px] flex items-center gap-1.5"><Eye size={13} /> Visibility &amp; Rules</h3>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">{base.visibility}</span>
+            </div>
+            <VisibilityRules visibility={base.visibility || 'People Leader'} />
+            <p className="text-[10px] text-muted-text border-t border-border pt-1.5">Leaders can view progress but cannot update it unless explicitly permitted.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Role Profiles (REQ1 #501 Role Expectations) ---
+const RoleProfilesView = () => {
+  const [search, setSearch] = useState('');
+  const [grade, setGrade] = useState('All');
+  const [dept, setDept] = useState('All');
+  const [selected, setSelected] = useState(ROLE_PROFILES[0].id);
+
+  const grades = ['All', ...Array.from(new Set(ROLE_PROFILES.map((r) => r.grade)))];
+  const depts = ['All', ...Array.from(new Set(ROLE_PROFILES.map((r) => r.department)))];
+
+  const filtered = ROLE_PROFILES.filter((r) =>
+    (grade === 'All' || r.grade === grade) &&
+    (dept === 'All' || r.department === dept) &&
+    (r.title.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  const profile = ROLE_PROFILES.find((r) => r.id === selected) || filtered[0] || ROLE_PROFILES[0];
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-[16px] font-bold">Role Profiles</h3>
+        <p className="text-[12px] text-muted-text">Standardised expectations for each role and grade level.</p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-text" size={14} />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search role title…" className="pl-9 pr-4 py-1.5 border border-border rounded-[4px] text-[13px] w-64 focus:outline-none focus:ring-1 focus:ring-primary-action" />
+        </div>
+        <select value={grade} onChange={(e) => setGrade(e.target.value)} className="cal-group-select">{grades.map((g) => <option key={g}>{g === 'All' ? 'All Grades' : g}</option>)}</select>
+        <select value={dept} onChange={(e) => setDept(e.target.value)} className="cal-group-select">{depts.map((d) => <option key={d}>{d === 'All' ? 'All Departments' : d}</option>)}</select>
+      </div>
+
+      <div className="grid grid-cols-12 gap-6">
+        <div className="col-span-12 lg:col-span-4 space-y-2">
+          <div className="card p-0 overflow-hidden">
+            {filtered.map((r) => (
+              <button key={r.id} onClick={() => setSelected(r.id)} className={cn('w-full text-left p-3 border-b border-border last:border-0 hover:bg-gray-50 transition-colors', selected === r.id && 'bg-gray-50')}>
+                <div className="font-bold text-[13px]">{r.title}</div>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded">{r.grade}</span>
+                  <span className="text-[11px] text-muted-text">{r.department}</span>
+                </div>
+              </button>
+            ))}
+            {filtered.length === 0 && <div className="p-4 text-[12px] text-muted-text italic">No matching role profiles.</div>}
+          </div>
+        </div>
+
+        <div className="col-span-12 lg:col-span-8 space-y-4">
+          <div className="card space-y-1">
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-[16px]">{profile.title}</h3>
+              <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded">{profile.grade}</span>
+            </div>
+            <p className="text-[12px] text-muted-text">{profile.department}</p>
+          </div>
+
+          {[
+            { title: 'Responsibilities', icon: <CheckSquare size={14} />, items: profile.responsibilities },
+            { title: 'Competencies', icon: <Award size={14} />, items: profile.competencies },
+            { title: 'Performance Indicators', icon: <TrendingUp size={14} />, items: profile.performanceIndicators },
+          ].map((sec) => (
+            <div key={sec.title} className="card space-y-2">
+              <h4 className="font-bold text-[13px] flex items-center gap-1.5">{sec.icon} {sec.title}</h4>
+              <ul className="space-y-1.5">
+                {sec.items.map((it) => (
+                  <li key={it} className="flex items-start gap-2 text-[12.5px]"><ChevronRight size={13} className="text-primary-action mt-0.5 flex-shrink-0" />{it}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -3882,9 +3998,29 @@ const AutomationRulesView = () => {
                 <td className="table-cell"><Badge status="Active" /></td>
                 <td className="table-cell"><MoreVertical size={14} className="text-muted-text cursor-pointer" /></td>
               </tr>
+              {/* Goal review cadence (#488) */}
+              <tr>
+                <td className="table-cell font-medium">Annual Goal Creation Reminder</td>
+                <td className="table-cell text-muted-text">Calendar (Annual)</td>
+                <td className="table-cell text-muted-text">Notification + Task</td>
+                <td className="table-cell text-muted-text">Jan 1 each year</td>
+                <td className="table-cell text-muted-text">All employees</td>
+                <td className="table-cell"><Badge status="Active" /></td>
+                <td className="table-cell"><MoreVertical size={14} className="text-muted-text cursor-pointer" /></td>
+              </tr>
+              <tr>
+                <td className="table-cell font-medium">Quarterly Goal Review Reminder</td>
+                <td className="table-cell text-muted-text">Calendar (Quarterly)</td>
+                <td className="table-cell text-muted-text">Notification + Task</td>
+                <td className="table-cell text-muted-text">Start of each quarter</td>
+                <td className="table-cell text-muted-text">All employees</td>
+                <td className="table-cell"><Badge status="Active" /></td>
+                <td className="table-cell"><MoreVertical size={14} className="text-muted-text cursor-pointer" /></td>
+              </tr>
             </tbody>
           </table>
         </div>
+        <p className="text-[11px] text-muted-text flex items-center gap-1.5"><Info size={12} /> Reminders create a corresponding task in each user's goal workspace to prompt creation / updates.</p>
       </div>
 
       <div className="space-y-4 pt-8 border-t border-border">
@@ -3959,123 +4095,6 @@ const AdminView = () => {
         {activeTab === 'Automation Rules' && <AutomationRulesView />}
         {activeTab === 'Notification Rules' && <NotificationRulesView />}
         {activeTab === 'Role Permissions' && <RolePermissionsView />}
-      </div>
-    </div>
-  );
-};
-
-const DevelopmentPlanView = ({ openChatbot }: { openChatbot: (trigger: string) => void }) => {
-  const [activeTab, setActiveTab] = useState('My Plan');
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h3 className="text-[18px] font-bold">Development Plan</h3>
-        <div className="flex items-center gap-2">
-          <button 
-            onClick={() => openChatbot('DEV_PLAN')}
-            className="btn-outline flex items-center gap-2 text-indigo-600 border-indigo-200 bg-indigo-50/50"
-          >
-            <Sparkles size={14} />
-            AI Coach
-          </button>
-          <button className="btn-primary">+ Add Goal</button>
-        </div>
-      </div>
-
-      <div className="flex items-center border-b border-border">
-        {['My Plan', 'Team Plans', 'Resources'].map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={cn(
-              "px-4 py-2 text-[13px] font-medium transition-all relative",
-              activeTab === tab ? "text-primary-action" : "text-muted-text hover:text-primary-text"
-            )}
-          >
-            {tab}
-            {activeTab === tab && (
-              <motion.div layoutId="activeTabDev" className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-action" />
-            )}
-          </button>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-8 space-y-4">
-          {[
-            { title: 'Advanced Project Management', category: 'Skill', status: 'In Progress', progress: 65, deadline: 'Jun 2026' },
-            { title: 'Public Speaking & Presentation', category: 'Soft Skill', status: 'Not Started', progress: 0, deadline: 'Aug 2026' },
-            { title: 'Cloud Architecture Certification', category: 'Technical', status: 'Completed', progress: 100, deadline: 'Mar 2026' },
-          ].map((goal, i) => (
-            <div key={i} className="card-review">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-text">{goal.category}</span>
-                    <Badge status={goal.status} />
-                  </div>
-                  <h4 className="text-[15px] font-bold">{goal.title}</h4>
-                </div>
-                <button className="p-1 hover:bg-gray-100 rounded text-muted-text"><MoreVertical size={14} /></button>
-              </div>
-              <div className="space-y-2">
-                <div className="flex justify-between text-[11px] font-bold">
-                  <span className="text-muted-text uppercase">Progress</span>
-                  <span>{goal.progress}%</span>
-                </div>
-                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                  <motion.div 
-                    initial={{ width: 0 }}
-                    animate={{ width: `${goal.progress}%` }}
-                    className="h-full bg-primary-action"
-                  />
-                </div>
-              </div>
-              <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
-                <div className="flex items-center gap-1 text-[11px] text-muted-text font-medium">
-                  <Calendar size={12} />
-                  Target: {goal.deadline}
-                </div>
-                <button className="text-[12px] font-bold text-primary-action hover:underline">Update Progress</button>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="lg:col-span-4 space-y-6">
-          <div className="card space-y-4">
-            <h4 className="text-[12px] font-bold text-muted-text uppercase tracking-wider">Recommended Resources</h4>
-            <div className="space-y-3">
-              {[
-                { title: 'Leadership Foundations', type: 'Course', duration: '4h 30m', platform: 'LinkedIn Learning' },
-                { title: 'Effective Communication', type: 'Workshop', duration: '2h', platform: 'Internal' },
-                { title: 'System Design Patterns', type: 'Book', duration: '12 chapters', platform: 'O\'Reilly' },
-              ].map((res, i) => (
-                <div key={i} className="p-3 rounded border border-border hover:border-primary-action cursor-pointer transition-all group">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 bg-gray-100 rounded text-muted-text">{res.type}</span>
-                    <span className="text-[10px] text-muted-text">{res.platform}</span>
-                  </div>
-                  <h5 className="text-[13px] font-bold group-hover:text-primary-action transition-colors">{res.title}</h5>
-                  <p className="text-[11px] text-muted-text mt-1">{res.duration}</p>
-                </div>
-              ))}
-            </div>
-            <button className="w-full py-2 text-[12px] font-bold text-primary-action hover:underline">Explore All Resources</button>
-          </div>
-
-          <div className="card bg-indigo-50 border-indigo-100 space-y-3">
-            <div className="flex items-center gap-2 text-indigo-700">
-              <Sparkles size={16} />
-              <h4 className="text-[13px] font-bold">AI Career Path Suggestion</h4>
-            </div>
-            <p className="text-[12px] text-indigo-900 leading-relaxed">
-              Based on your "Strong" rating in technical execution and interest in architecture, we recommend exploring the <b>Senior Architect</b> path.
-            </p>
-            <button className="w-full py-2 bg-indigo-600 text-white rounded-[4px] text-[12px] font-bold hover:bg-indigo-700 transition-all">View Path Details</button>
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -4222,6 +4241,11 @@ const NotificationRulesView = () => {
               { event: 'Review Cycle Started', recipient: 'All Employees', channel: 'Email, Slack', template: 'Cycle Launch', status: 'Active' },
               { event: 'Self-Assessment Pending', recipient: 'Employee', channel: 'Slack', template: 'Reminder (3d)', status: 'Active' },
               { event: 'Manager Review Submitted', recipient: 'HRBP', channel: 'Email', template: 'Review Alert', status: 'Inactive' },
+              { event: 'TL Reviewed / Updated a Goal', recipient: 'Goal Owner', channel: 'Email, In-App', template: 'Goal Reviewed', status: 'Active' },
+              { event: 'Annual Goal Creation Due', recipient: 'All Employees', channel: 'Email, In-App', template: 'Create Goals (Annual)', status: 'Active' },
+              { event: 'Quarterly Goal Review Due', recipient: 'All Employees', channel: 'Email, In-App', template: 'Update Goals (Quarterly)', status: 'Active' },
+              { event: 'Feedback Request Received', recipient: 'Respondent', channel: 'Email, In-App', template: 'Feedback Request', status: 'Active' },
+              { event: 'Feedback Completed', recipient: 'Requestor', channel: 'Email, In-App', template: 'Feedback Ready', status: 'Active' },
             ].map((rule, i) => (
               <tr key={i} className="hover:bg-gray-50 transition-colors">
                 <td className="table-cell font-medium">{rule.event}</td>
@@ -4401,7 +4425,7 @@ const AIChatbot = ({
                     {msg.type === 'ai' && (
                       <div className="flex items-center gap-1.5 mb-1.5 opacity-60">
                         <Bot size={12} />
-                        <span className="text-[10px] font-bold uppercase tracking-wider">PerfoPulse AI</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider">Scyne AI</span>
                       </div>
                     )}
                     <p className="text-[12.5px] leading-relaxed whitespace-pre-wrap">{msg.text}</p>
@@ -4451,7 +4475,7 @@ const AIChatbot = ({
                     setInputValue('');
                   }
                 }}
-                placeholder="Ask PerfoPulse AI anything..."
+                placeholder="Ask Scyne AI anything..."
                 className="chatbot-input"
               />
               <button 
@@ -4477,6 +4501,83 @@ const AIChatbot = ({
 };
 
 // --- Main App ---
+
+// --- Notification & Task center (REQ1 #483/#488/#491, REQ2 #493/#496) ---
+const NotificationCenter = () => {
+  const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<'notifs' | 'tasks'>('notifs');
+  const [notifs, setNotifs] = useState(NOTIFICATIONS);
+  const [tasks, setTasks] = useState(TASKS);
+  const unread = notifs.filter((n) => n.unread).length;
+  const openTasks = tasks.filter((t) => !t.done).length;
+
+  const iconFor = (t: string) =>
+    t === 'review' ? <UserPlus size={13} /> : t === 'feedback' ? <CheckCheck size={13} /> : t === 'request' ? <Send size={13} /> : <Calendar size={13} />;
+  const toneFor = (t: string) =>
+    t === 'review' ? 'bg-blue-50 text-blue-600' : t === 'feedback' ? 'bg-green-50 text-green-600' : t === 'request' ? 'bg-indigo-50 text-indigo-600' : 'bg-amber-50 text-amber-600';
+
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen((o) => !o)} className="relative p-2 rounded-[4px] border border-border hover:bg-gray-50 text-muted-text hover:text-primary-text">
+        <Bell size={16} />
+        {(unread + openTasks) > 0 && (
+          <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center">{unread + openTasks}</span>
+        )}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 mt-2 w-[348px] bg-white border border-border rounded-[8px] shadow-xl z-50 overflow-hidden">
+            <div className="flex items-center border-b border-border">
+              <button onClick={() => setTab('notifs')} className={cn('flex-1 py-2.5 text-[12px] font-bold flex items-center justify-center gap-1.5', tab === 'notifs' ? 'text-primary-action border-b-2 border-primary-action' : 'text-muted-text')}>
+                <Bell size={13} /> Notifications {unread > 0 && <span className="bg-red-100 text-red-600 rounded-full px-1.5 text-[9px]">{unread}</span>}
+              </button>
+              <button onClick={() => setTab('tasks')} className={cn('flex-1 py-2.5 text-[12px] font-bold flex items-center justify-center gap-1.5', tab === 'tasks' ? 'text-primary-action border-b-2 border-primary-action' : 'text-muted-text')}>
+                <ListTodo size={13} /> Tasks {openTasks > 0 && <span className="bg-indigo-100 text-indigo-700 rounded-full px-1.5 text-[9px]">{openTasks}</span>}
+              </button>
+            </div>
+
+            {tab === 'notifs' && (
+              <div className="max-h-[380px] overflow-y-auto">
+                <div className="flex justify-end px-3 py-1.5 border-b border-border">
+                  <button onClick={() => setNotifs((p) => p.map((n) => ({ ...n, unread: false })))} className="text-[10px] text-primary-action hover:underline">Mark all read</button>
+                </div>
+                {notifs.map((n) => (
+                  <button key={n.id} onClick={() => setNotifs((p) => p.map((x) => (x.id === n.id ? { ...x, unread: false } : x)))} className={cn('w-full text-left flex items-start gap-2.5 p-3 border-b border-border last:border-0 hover:bg-gray-50', n.unread && 'bg-indigo-50/30')}>
+                    <div className={cn('w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0', toneFor(n.icon))}>{iconFor(n.icon)}</div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[12px] font-bold">{n.title}</span>
+                        {n.unread && <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />}
+                      </div>
+                      <p className="text-[11px] text-muted-text leading-snug">{n.body}</p>
+                      <span className="text-[10px] text-muted-text">{n.time} • {n.channel}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {tab === 'tasks' && (
+              <div className="max-h-[380px] overflow-y-auto">
+                {tasks.map((t) => (
+                  <label key={t.id} className="flex items-start gap-2.5 p-3 border-b border-border last:border-0 hover:bg-gray-50 cursor-pointer">
+                    <input type="checkbox" checked={t.done} onChange={() => setTasks((p) => p.map((x) => (x.id === t.id ? { ...x, done: !x.done } : x)))} className="accent-[#464E7E] mt-0.5" />
+                    <div className="flex-1">
+                      <span className={cn('text-[12px] font-medium', t.done && 'line-through text-muted-text')}>{t.title}</span>
+                      <div className="text-[10px] text-muted-text">Auto-created from: {t.source} • due {fmtDate(t.due)}</div>
+                    </div>
+                  </label>
+                ))}
+                <p className="text-[10px] text-muted-text p-3">Tasks are auto-created by goal cadence reminders and feedback requests.</p>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
 
 export default function App() {
   console.log('App rendering...');
@@ -4544,13 +4645,9 @@ export default function App() {
     { name: 'Company Goals', icon: <Building2 size={14} /> },
     { name: 'My Goals', icon: <Target size={14} /> },
     { name: 'Team Goals', icon: <Users size={14} /> },
+    { name: 'Role Profiles', icon: <Layers size={14} /> },
     { name: 'Reviews', icon: <ClipboardList size={14} /> },
     { name: 'Feedback', icon: <MessageSquare size={14} /> },
-    { name: 'Talent Review', icon: <Trophy size={14} /> },
-    { name: 'Merit Cycles', icon: <BarChart3 size={14} /> },
-    { name: 'Development Plan', icon: <TrendingUp size={14} /> },
-    { name: 'People', icon: <Users size={14} /> },
-    { name: 'Analytics', icon: <BarChart3 size={14} /> },
     { name: 'Admin', icon: <Settings size={14} /> },
   ];
 
@@ -4558,7 +4655,6 @@ export default function App() {
     switch (activeView) {
       case 'Dashboard': return <Dashboard setActiveView={setActiveView} />;
       case 'Company Goals': return <CompanyGoalsView setActiveView={setActiveView} />;
-      case 'People': return <PeopleDirectory />;
       case 'Reviews': return (
         <ReviewsView 
           setActiveView={setActiveView} 
@@ -4570,16 +4666,12 @@ export default function App() {
         />
       );
       case 'Feedback': return <FeedbackView />;
-      case 'Merit Cycles': return <MeritCyclesView setActiveView={setActiveView} />;
-      case 'MeritCycleDetail': return <MeritCycleDetailView onBack={() => setActiveView('Merit Cycles')} />;
       case 'SelfAssessment': return <SelfAssessmentView onBack={() => setActiveView('Reviews')} />;
       case 'ManagerReview': return <ManagerReviewView onBack={() => setActiveView('Reviews')} openChatbot={openChatbot} />;
       case 'ReviewResults': return <ReviewResultsView onBack={() => setActiveView('Reviews')} />;
-      case 'Talent Review': return <TalentReviewView roleMode={roleMode} />;
-      case 'Development Plan': return <DevelopmentPlanView openChatbot={openChatbot} />;
-      case 'Analytics': return <AnalyticsView openChatbot={openChatbot} />;
       case 'My Goals': return <MyGoalsView />;
       case 'Team Goals': return <TeamGoalsView />;
+      case 'Role Profiles': return <RoleProfilesView />;
       case 'Admin': return <AdminView />;
       case 'GoalDetail': return <GoalDetailView onBack={() => setActiveView('Company Goals')} />;
       case 'ReviewDetail': return <ReviewDetailView onBack={() => setActiveView('Reviews')} />;
@@ -4621,10 +4713,10 @@ export default function App() {
         <div className="p-4 border-b border-border mb-4 flex items-center justify-between">
           {isSidebarOpen && (
             <div>
-              <h1 className="text-[14px] font-bold text-primary-text leading-tight">PerfoPulse</h1>
-              <div className="flex items-center gap-1">
+              <img src="/scyne-logo.svg" alt="Scyne" className="h-[18px] w-auto" />
+              <div className="flex items-center gap-1 mt-1">
                 <div className="w-[1px] h-3 bg-border" />
-                <span className="text-[11px] text-muted-text">People Bridge</span>
+                <span className="text-[11px] text-muted-text tracking-wide">Performance</span>
               </div>
             </div>
           )}
@@ -4656,35 +4748,6 @@ export default function App() {
           ))}
         </nav>
 
-        <div className="p-4 border-t border-border bg-indigo-50/30">
-          <button 
-            onClick={() => openChatbot('GENERAL')}
-            className={cn(
-              "w-full flex items-center gap-3 px-3 py-2 text-[13px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-lg hover:bg-indigo-100 transition-all",
-              !isSidebarOpen && "justify-center px-0"
-            )}
-          >
-            <Sparkles size={14} />
-            {isSidebarOpen && <span>AI Assistant</span>}
-          </button>
-        </div>
-
-        <div className="p-4 border-t border-border space-y-3">
-          {isSidebarOpen ? (
-            <>
-              <button className="text-[12px] text-muted-text hover:text-primary-text block w-full text-left">Change Password</button>
-              <button className="text-[12px] text-muted-text hover:text-primary-text block w-full text-left">My Profile</button>
-              <button className="flex items-center gap-2 text-[12px] text-muted-text hover:text-primary-text w-full text-left">
-                <LogOut size={12} />
-                Log Out
-              </button>
-            </>
-          ) : (
-            <button className="text-muted-text hover:text-primary-text block w-full text-center">
-              <LogOut size={16} className="mx-auto" />
-            </button>
-          )}
-        </div>
       </aside>
 
       {/* Main Content */}
@@ -4696,7 +4759,7 @@ export default function App() {
               <div className="flex items-center gap-3">
                 <h2 className="text-[16px] sm:text-[18px] font-semibold">{activeView}</h2>
                 {activeView === 'Dashboard' && <Badge status="Active" />}
-                {(activeView === 'Reviews' || activeView === 'Talent Review') && (
+                {activeView === 'Reviews' && (
                   <div className="flex items-center bg-gray-100 rounded-[4px] p-0.5 ml-2">
                     <button 
                       onClick={() => setRoleMode('Direct')}
@@ -4723,10 +4786,13 @@ export default function App() {
                 Management / {activeView}
               </div>
             </div>
-            <button className="btn-primary flex items-center gap-2">
-              <Plus size={14} />
-              <span className="hidden sm:inline">Create New</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <NotificationCenter />
+              <button className="btn-primary flex items-center gap-2">
+                <Plus size={14} />
+                <span className="hidden sm:inline">Create New</span>
+              </button>
+            </div>
           </header>
         )}
 

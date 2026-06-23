@@ -1,0 +1,127 @@
+GitHub Ticket ,Feature Area,User Story,Requirement/Functionality,Notes,,,,
+https://github.com/ScyneAdvisory/scyne-skillpassport-app/issues/482,Goal Creation,"User should be able to add new goals with a description, metrics and alignment",The system shall allow users to input a clear and concise description for each new goal.,,,,,
+,,,The system shall enable users to define at least one quantifiable measurement for each new goal to track progress.,,,,,
+,,,The system shall enable users to link one or more activities to a specific goal.,,,,,
+,,,"The system shall enable users to link specific received feedback (e.g., from formal reviews, continuous feedback modules, or direct input) to one or more relevant individual goals.",,,,,
+https://github.com/ScyneAdvisory/scyne-skillpassport-app/issues/481,Goal Import,"I want to see all my old goals in the new system, so that my historical progress is visible and accessible.",Import existing D365 goals,,,,,
+,Goal Tracking,"Employees and leaders need a simple, transparent way to understand how goals are progressing over time. Real-time progress tracking with visual indicators helps:
+-Encourage continuous goal engagement (not just annual reviews)
+-Support timely coaching and feedback
+-Improve accountability and completion rates
+-Enable leaders to identify risks, blockers, or stalled development early","Progress Tracking
+Each goal must support progress tracking.
+Progress can be updated by the goal owner at any time.
+Progress updates are saved and shown in real time.
+Progress tracking must support:
+Percentage completion (0–100%)
+Discrete statuses (e.g. Not Started, In Progress, On Track, At Risk, Completed)
+System supports configuration of progress type by goal (percentage, status, or both).",,,,,
+,,,"Visual Progress Indicators
+Each goal displays a clear visual indicator of progress, such as:
+Progress bar
+Status badge or colour-coded indicator
+Visual indicators update immediately after a progress change.
+Visual states include:
+Not Started
+In Progress
+On Track
+At Risk
+Completed",,,,,
+,,,"Milestones (Optional but Supported)
+Goals may include one or more milestones.
+Each milestone has:
+Description
+Target date
+Completion status
+Completion of milestones contributes to overall goal progress.
+Visual indicators reflect milestone completion",,,,,
+,,,"Progress Updates & History
+Users can add a progress update note when changing progress.
+Each update records:
+Date and time
+Updated progress value
+Optional comments
+Progress update history is visible to:
+Goal owner
+Users permitted by the goal’s visibility settings",,,,,
+,,,"Deadlines & Risk Indicators
+Goals can have a target completion date.
+System displays warnings when: Goal is approaching due date with low progress and Goal is overdue
+Goals automatically show an At Risk indicator when: Target date is nearing and progress is below a defined threshold.",,,,,
+,,,"Leader Visibility
+Progress indicators are visible to:
+People Leaders
+Project Leaders
+Others based on the goal’s visibility setting
+Leaders see progress in:
+Employee profile view
+Goal summary views
+Leaders cannot update progress unless explicitly permitted.
+",,,,,
+https://github.com/ScyneAdvisory/scyne-skillpassport-app/issues/501,Role Expectations,View standardised role profiles by grade/role,The system shall enable users to view standardised role profiles that clearly articulate the expectations for each role and grade level.,,,,,
+,,,"Users shall be able to filter or search for role profiles based on criteria such as grade level, role title, or department.",,,,,
+,,,"Each role profile shall clearly display expected responsibilities, competencies, and performance indicators relevant to that specific role.",,,,,
+https://github.com/ScyneAdvisory/scyne-skillpassport-app/issues/502,Performance Alignment,Link goals to performance reviews and discussions,The system shall provide functionality to link individual goals to the performance review process.,,,,,
+,,,"During performance reviews, the system shall display a user's associated goals (including their description, metrics, and progress) to facilitate discussions between the user and their manager.",,,,,
+https://github.com/ScyneAdvisory/scyne-skillpassport-app/issues/483,Manager Review,The permission set of Team Leader should be able to review goals.,"A structured review workflow where TLs can view, comment, request changes, approve, or reject employee goal submissions for a defined cycle.",,,,,
+,,,Goal-level and submission-level review actions.,,,,,
+,,,Audit trail of comments and actions.,,,,,
+,,,Notifications to TLs and employees on key events.,,,,,
+,,,Status visibility in TL and Employee views.,,,,,
+https://github.com/ScyneAdvisory/scyne-skillpassport-app/issues/484,Visibility,"As an employee, I want to choose who can view each of my goals, so that I can control the visibility of my personal development plans while sharing relevant goals with leaders and stakeholders who can support my growth and performance.","Goal owner only
+Goal is not visible to People Leaders, Project Leaders, or other employees.
+Goal does not appear in manager review screens.
+Goal is excluded from reporting and organisational searches.
+Goal owner can update visibility at any time.",,,,,
+,,"As a People Leader or Project Leader, I want visibility into goals that are relevant to my role, so that I can provide guidance, feedback, and support aligned to an employee's development objectives.","People Leader Visibility
+Goal is visible within the employee's goal profile.
+People Leader can review progress.
+People Leader can provide comments and feedback.
+Goal can be referenced during performance reviews.
+Visibility automatically transfers if reporting line changes.",,,,,
+,,,"Project Leader Visibility
+Project Leaders can view goal details.
+Project Leaders can provide feedback against the goal.
+Goal can be referenced during project performance discussions.
+Access is removed when a Project Leader is no longer assigned to the employee.",,,,,
+,,,"Organisation Hierarchy Visibility
+Goals are visible to authorised leaders above the employee's grade level.
+Supports succession planning and talent management.
+Enables senior leaders to identify development aspirations and capability gaps.
+Visibility follows organisational structure and permission rules.",,,,,
+,,,"Public Visibility
+Goal appears on employee development profile.
+Other employees can view goal details.
+Goals may be discoverable through search and profile pages.
+Enables connection with mentors, subject matter experts, and colleagues with similar development objectives.
+No editing rights are granted to other users",,,,,
+https://github.com/ScyneAdvisory/scyne-skillpassport-app/issues/485,Goal Types,User should be able to select one or more of these goal types.,"The following goal types: Strategic, Individual and Team",,,,,
+https://github.com/ScyneAdvisory/scyne-skillpassport-app/issues/486,Scyne Values,User should be able to select one or more of these scyne values as tag,"Stronger together
+Working as a team, we are stronger through the connections we have. They are based on respect and trust. By collaborating to solve problems we create shared value and success.",,,,,
+,,,"Amplify impact
+Purpose and passion are at our core. We value what we know and invest in that every day. Client focus is central, and we are proud of the work we do.",,,,,
+,,,"Build trusted relationships                                                                                                                                                                                                                                                                                 Our relationships are open, frank, and fearless. Trust comes from our care and taking time to understand. Our focus is on how we work as well as what we do.",,,,,
+,,,"Value every person
+Respect is the foundation of how we work. We encourage debate and diversity of views. This makes us feel valued and included.",,,,,
+,,,"Think beyond limits
+We embrace a spirit of creativity and are curious in how we explore new ideas. We challenge how we have 'always done things'. Learning is key to this, both from experience and in staying ahead of the issues facing our clients.",,,,,
+,,,"Defined by ethics
+Honesty, integrity, and ethical behaviour are non-negotiables. We do what is right, not what is easy. Our clients and teams are clear on where the boundaries are.",,,,,
+https://github.com/ScyneAdvisory/scyne-skillpassport-app/issues/487,Profile Integration,The user should be able to link entities from the Skills Passport to goals (single or multiple):,"The system shall enable users to link entities from their ""Skills Passport"" (including Skills, Education, and Roles & Experience) to one or more goals.",,,,,
+,,,"The system shall support Create, Read, Update, and Delete operations for Skills Passport entities (Skills, Education, and Roles & Experience) directly within the goal system.",,,,,
+https://github.com/ScyneAdvisory/scyne-skillpassport-app/issues/488,Review Cadence,Quarterly and annual review cycles,"The system shall automatically generate and send a notification to each user annually, reminding them to create their goals for the upcoming period.",,,,,
+,,,"The system shall automatically generate and send a notification to each user quarterly, reminding them to review and update their existing goals.",,,,,
+,,,The system shall also automatically create a corresponding task for the user within the goal system to prompt goal updates/creation.,,,,,
+https://github.com/ScyneAdvisory/scyne-skillpassport-app/issues/490,Status Updates,"As a user or Team Leader, I want to be able to change the status of goals","The status options of the goals should be: 
+Not Started
+On track
+Needs Improvement
+Completed
+Cancelled",,,,,
+https://github.com/ScyneAdvisory/scyne-skillpassport-app/issues/491,Notifications,As a user I want to see a notification when my team leader has reviewed and updated my goal.,The system shall send a notification to a user whenever their team leader reviews or makes updates to any of their goals.,,,,,
+,,,This notification shall clearly indicate which goal was reviewed/updated and by whom.,,,,,
+,,,"The system shall automatically record and display an activity entry (e.g., in an activity log or history) when a user performs the following actions on their goals:
+Editing a goal.
+Completing a goal.
+Updating the progress or status of a goal.",,,,,
+,,,,,,,,
