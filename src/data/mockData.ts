@@ -1,4 +1,4 @@
-import { Employee, Goal, ReviewCycle, Feedback, RoleProfile, FeedbackRequest } from '../types';
+import { Employee, Goal, ReviewCycle, Feedback, RoleProfile, FeedbackRequest, CheckIn, GradeExpectation } from '../types';
 
 export const EMPLOYEES: Employee[] = [
   { id: '1', name: 'Sarah Chen', role: 'Product Manager', department: 'Product', managerId: '10', reviewScore: 4.2, goalsDone: 6, totalGoals: 8, alignment: 'Aligned', avatar: 'SC', tenure: '3 yrs 2 mo', flightRisk: 'Low', nineBoxLabel: 'STAR ⭐' },
@@ -10,12 +10,16 @@ export const EMPLOYEES: Employee[] = [
   { id: '7', name: 'Priya B', role: 'Engineering Manager', department: 'Engineering', reviewScore: 4.1, goalsDone: 6, totalGoals: 7, alignment: 'Aligned', avatar: 'PB' },
 ];
 
+// Practice Goals — org-level goals that individual goals align to (formerly "Company Goals")
 export const COMPANY_GOALS: Goal[] = [
-  { id: 'cg1', title: 'Grow ARR to $50M by EOY', pillar: 'Revenue Growth', owner: 'Alex Reid', progress: 65, status: 'Active', dueDate: '2025-12-31', teamsAligned: 4, individualsContributing: 42 },
-  { id: 'cg2', title: 'Achieve NPS > 65', pillar: 'Customer Success', owner: 'Sarah Chen', progress: 48, status: 'Active', dueDate: '2025-12-31', teamsAligned: 3, individualsContributing: 28 },
-  { id: 'cg3', title: 'Launch Mobile Platform Q2', pillar: 'Product', owner: 'Nik Maniya', progress: 78, status: 'Active', dueDate: '2025-06-30', teamsAligned: 2, individualsContributing: 15 },
-  { id: 'cg4', title: 'Reduce Attrition to < 8%', pillar: 'People', owner: 'Priya B', progress: 30, status: 'Active', dueDate: '2025-12-31', teamsAligned: 5, individualsContributing: 120 },
+  { id: 'cg1', title: 'Grow ARR to $50M by EOY', pillar: 'Revenue Growth', owner: 'Alex Reid', progress: 65, status: 'Active', dueDate: '2025-12-31', teamsAligned: 4, individualsContributing: 42, scyneValues: ['Amplify impact', 'Think beyond limits'] },
+  { id: 'cg2', title: 'Achieve NPS > 65', pillar: 'Customer Success', owner: 'Sarah Chen', progress: 48, status: 'Active', dueDate: '2025-12-31', teamsAligned: 3, individualsContributing: 28, scyneValues: ['Build trusted relationships', 'Amplify impact'] },
+  { id: 'cg3', title: 'Launch Mobile Platform Q2', pillar: 'Product', owner: 'Nik Maniya', progress: 78, status: 'Active', dueDate: '2025-06-30', teamsAligned: 2, individualsContributing: 15, scyneValues: ['Think beyond limits', 'Stronger together'] },
+  { id: 'cg4', title: 'Reduce Attrition to < 8%', pillar: 'People', owner: 'Priya B', progress: 30, status: 'Active', dueDate: '2025-12-31', teamsAligned: 5, individualsContributing: 120, scyneValues: ['Value every person', 'Stronger together'] },
 ];
+
+// Alias for clarity in the UI — these are the "Practice Goals"
+export const PRACTICE_GOALS = COMPANY_GOALS;
 
 export const REVIEW_CYCLES: ReviewCycle[] = [
   { id: 'rc1', name: 'Q1 2025 Annual Review', type: 'Annual', participants: 12, selfReviewsDone: 8, managerReviewsDone: 5, calibrationDone: 0, status: 'Active', avgScore: 4.1, daysRemaining: 14 },
@@ -64,10 +68,18 @@ export const MY_GOALS: Goal[] = [
     description: 'Deliver a self-serve developer docs portal to reduce support tickets and accelerate partner onboarding.',
     owner: 'Sarah Chen',
     parentGoalId: 'cg3',
+    parentGoalIds: ['cg3'],
     progress: 70,
     status: 'On Track',
     dueDate: '2026-07-31',
+    dateCreated: '2026-03-01',
+    approved: true,
     weight: 30,
+    changeHistory: [
+      { id: 'ch1', date: '2026-03-01 09:00', field: 'Goal', from: '—', to: 'Created', by: 'Sarah Chen' },
+      { id: 'ch2', date: '2026-03-03 11:15', field: 'Status', from: 'Pending Approval', to: 'Approved', by: 'Alex Reid' },
+      { id: 'ch3', date: '2026-05-02 14:05', field: 'Target date', from: '2026-06-30', to: '2026-07-31', by: 'Sarah Chen' },
+    ],
     goalTypes: ['Individual', 'Strategic'],
     scyneValues: ['Amplify impact', 'Think beyond limits'],
     visibility: 'People Leader',
@@ -98,10 +110,17 @@ export const MY_GOALS: Goal[] = [
     description: 'Coach two graduate PMs across discovery, delivery and launch.',
     owner: 'Sarah Chen',
     parentGoalId: 'cg4',
+    parentGoalIds: ['cg4'],
     progress: 40,
     status: 'Needs Improvement',
     dueDate: '2026-05-30',
+    dateCreated: '2026-02-10',
+    approved: true,
     weight: 20,
+    changeHistory: [
+      { id: 'ch4', date: '2026-02-10 10:00', field: 'Goal', from: '—', to: 'Created', by: 'Sarah Chen' },
+      { id: 'ch5', date: '2026-02-12 09:30', field: 'Status', from: 'Pending Approval', to: 'Approved', by: 'Alex Reid' },
+    ],
     goalTypes: ['Individual', 'Team'],
     scyneValues: ['Stronger together', 'Value every person'],
     visibility: 'Org Hierarchy',
@@ -129,7 +148,14 @@ export const MY_GOALS: Goal[] = [
     progress: 100,
     status: 'Completed',
     dueDate: '2026-03-31',
+    dateCreated: '2025-12-15',
+    approved: true,
     weight: 15,
+    changeHistory: [
+      { id: 'ch6', date: '2025-12-15 08:30', field: 'Goal', from: '—', to: 'Created', by: 'Sarah Chen' },
+      { id: 'ch7', date: '2025-12-16 13:00', field: 'Status', from: 'Pending Approval', to: 'Approved', by: 'Alex Reid' },
+      { id: 'ch8', date: '2026-03-28 17:00', field: 'Status', from: 'On Track', to: 'Completed', by: 'Sarah Chen' },
+    ],
     goalTypes: ['Individual'],
     scyneValues: ['Think beyond limits'],
     visibility: 'Public',
@@ -153,7 +179,12 @@ export const MY_GOALS: Goal[] = [
     progress: 35,
     status: 'At Risk',
     dueDate: '2026-06-25',
+    dateCreated: '2026-04-01',
+    approved: false,
     weight: 15,
+    changeHistory: [
+      { id: 'ch9', date: '2026-04-01 09:00', field: 'Goal', from: '—', to: 'Imported from D365', by: 'System' },
+    ],
     goalTypes: ['Individual'],
     scyneValues: ['Amplify impact'],
     visibility: 'Owner Only',
@@ -233,6 +264,7 @@ export const REMINDER_SCHEDULE = [
 
 // --- In-app notifications & auto-created tasks (REQ1 #483/#488/#491, REQ2 #493/#496) ---
 export const NOTIFICATIONS = [
+  { id: 'n0', icon: 'request', title: 'Goal approval needed — Sarah Chen', body: 'Sarah has reduced “Grow new-logo revenue” from $2,000,000 to $100. Review and approve the change.', time: 'Just now', unread: true, channel: 'In-App, Email' },
   { id: 'n1', icon: 'review', title: 'Alex Reid reviewed your goal', body: '“Launch new API documentation portal” was reviewed and updated by your Team Leader.', time: '2h ago', unread: true, channel: 'In-App, Email' },
   { id: 'n2', icon: 'feedback', title: 'Feedback completed', body: 'Nik Maniya completed your feedback request for “Q1 Planning”.', time: '5h ago', unread: true, channel: 'In-App, Email' },
   { id: 'n3', icon: 'request', title: 'New feedback request', body: 'Alex Reid requested feedback from you — due Apr 15.', time: '1d ago', unread: true, channel: 'In-App, Email' },
@@ -244,6 +276,62 @@ export const TASKS = [
   { id: 't1', title: 'Update your goals for Q2 2026', source: 'Quarterly review reminder', due: '2026-06-30', done: false },
   { id: 't2', title: 'Create your goals for FY2027', source: 'Annual creation reminder', due: '2026-07-15', done: false },
   { id: 't3', title: 'Provide feedback to Alex Reid', source: 'Feedback request', due: '2026-04-15', done: false },
+];
+
+// --- General check-in log (simplified, not per-goal) ---
+// A log of discussions with a people leader or colleague: date, person, free-text notes.
+export const CHECK_IN_LOG: CheckIn[] = [
+  { id: 'ci1', date: '2026-06-18', withPerson: 'Alex Reid (People Leader)', notes: 'Discussed progress on the docs portal and agreed to push the public launch to end of July. Alex happy with momentum; flagged we need design review time booked.' },
+  { id: 'ci2', date: '2026-05-30', withPerson: 'Nik Maniya (Mentor)', notes: 'Career conversation — talked through moving towards a Product Lead remit next FY. Action: shadow a portfolio planning session.' },
+  { id: 'ci3', date: '2026-05-12', withPerson: 'Ben Scyne (Peer)', notes: 'Paired on the mentoring plan for the two grad PMs. Agreed a fortnightly cadence and shared a discovery template.' },
+];
+
+// --- Grade Expectations (hard-coded performance criteria; replaces external PowerPoint links) ---
+export const GRADE_EXPECTATIONS: GradeExpectation[] = [
+  {
+    grade: 'G3', level: 'Associate',
+    summary: 'Delivers defined tasks with guidance, builds core craft, and contributes reliably to team outcomes.',
+    criteria: [
+      { area: 'Delivery & Quality', expectation: 'Completes assigned work to agreed standards, on time, escalating blockers early.' },
+      { area: 'Client Impact', expectation: 'Supports client deliverables; understands the “why” behind the work.' },
+      { area: 'Collaboration', expectation: 'Works well within the team, asks for help, and shares progress openly.' },
+      { area: 'Growth & Learning', expectation: 'Actively builds foundational skills and acts on feedback.' },
+      { area: 'Leadership & Values', expectation: 'Lives the Scyne values; takes ownership of their own development.' },
+    ],
+  },
+  {
+    grade: 'G4', level: 'Consultant',
+    summary: 'Owns workstreams end-to-end, solves ambiguous problems, and begins to guide others.',
+    criteria: [
+      { area: 'Delivery & Quality', expectation: 'Independently manages a workstream; anticipates risks and proposes solutions.' },
+      { area: 'Client Impact', expectation: 'Builds trusted day-to-day client relationships and shapes parts of the engagement.' },
+      { area: 'Collaboration', expectation: 'Coordinates across roles; gives clear, timely updates to leads.' },
+      { area: 'Growth & Learning', expectation: 'Deepens domain expertise and seeks stretch beyond the current role.' },
+      { area: 'Leadership & Values', expectation: 'Mentors associates informally; models openness and accountability.' },
+    ],
+  },
+  {
+    grade: 'G5', level: 'Senior Consultant / Manager',
+    summary: 'Leads delivery of significant scope, develops people, and is accountable for client outcomes.',
+    criteria: [
+      { area: 'Delivery & Quality', expectation: 'Accountable for quality and timeliness across a project; manages scope and dependencies.' },
+      { area: 'Client Impact', expectation: 'Owns key client relationships; identifies opportunities and shapes solutions.' },
+      { area: 'Collaboration', expectation: 'Leads cross-functional teams; resolves conflict and aligns stakeholders.' },
+      { area: 'Growth & Learning', expectation: 'Coaches team members and drives capability uplift in their area.' },
+      { area: 'Leadership & Values', expectation: 'Sets the tone on values; makes fair, ethical decisions under pressure.' },
+    ],
+  },
+  {
+    grade: 'G6', level: 'Principal / Senior Manager',
+    summary: 'Sets direction across multiple teams or accounts and grows the next generation of leaders.',
+    criteria: [
+      { area: 'Delivery & Quality', expectation: 'Accountable for outcomes across a portfolio; ensures consistent quality at scale.' },
+      { area: 'Client Impact', expectation: 'Trusted senior advisor; drives account growth and strategic value.' },
+      { area: 'Collaboration', expectation: 'Builds alignment across leaders; represents Scyne externally with credibility.' },
+      { area: 'Growth & Learning', expectation: 'Develops managers; builds a strong, diverse talent pipeline.' },
+      { area: 'Leadership & Values', expectation: 'Champions the values org-wide; holds the bar on ethics and inclusion.' },
+    ],
+  },
 ];
 
 // --- Feedback theme clustering & keyword frequency (REQ2 #497) ---

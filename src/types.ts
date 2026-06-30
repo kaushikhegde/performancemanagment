@@ -62,6 +62,15 @@ export interface FeedbackRequest {
   anonymity: 'Named' | 'Anonymous';
 }
 
+export interface GoalChange {
+  id: string;
+  date: string;
+  field: string;
+  from: string;
+  to: string;
+  by: string;
+}
+
 export interface Goal {
   id: string;
   title: string;
@@ -69,9 +78,12 @@ export interface Goal {
   pillar?: string;
   owner: string;
   parentGoalId?: string;
+  /** Practice Goals this goal aligns to (org-level goals) */
+  parentGoalIds?: string[];
   progress: number;
   status: Status;
   dueDate: string;
+  dateCreated?: string;
   weight?: number;
   keyResults?: KeyResult[];
   teamsAligned?: number;
@@ -83,6 +95,9 @@ export interface Goal {
   milestones?: Milestone[];
   metrics?: GoalMetric[];
   progressHistory?: ProgressUpdate[];
+  changeHistory?: GoalChange[];
+  /** Once approved, the goal record cannot be deleted (status can still change) */
+  approved?: boolean;
   linkedSkills?: string[];
   linkedActivities?: string[];
   linkedFeedback?: string[];
@@ -139,12 +154,20 @@ export interface Feedback {
   date: string;
 }
 
+// Simplified, general check-in log — not tracked per goal.
+// Captures a discussion with a people leader or colleague.
 export interface CheckIn {
   id: string;
-  goalId: string;
   date: string;
-  progress: number;
-  confidence: 'On Track' | 'At Risk' | 'Off Track';
+  /** Person the check-in discussion was held with */
+  withPerson: string;
   notes: string;
-  by: string;
+}
+
+// Grade-level performance expectations (replaces external PowerPoint criteria files)
+export interface GradeExpectation {
+  grade: string;
+  level: string;
+  summary: string;
+  criteria: { area: string; expectation: string }[];
 }
