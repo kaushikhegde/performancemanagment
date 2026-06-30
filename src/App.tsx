@@ -3793,16 +3793,6 @@ const GoalDetailView = ({ goalId, onBack }: { goalId?: string | null; onBack: ()
             ) : <span className="text-[11px] text-muted-text italic">Not linked to a review</span>}
             <p className="text-[11px] text-muted-text">This goal's description, metrics and progress appear during the review discussion.</p>
           </div>
-
-          {/* Visibility rules — enforced (#484 / #482 Leader Visibility) */}
-          <div className="card space-y-2">
-            <h3 className="font-bold text-[13px] flex items-center gap-1.5"><Eye size={13} /> Visibility &amp; Rules</h3>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-medium">{base.visibility}</span>
-            </div>
-            <VisibilityRules visibility={base.visibility || 'People Leader'} />
-            <p className="text-[10px] text-muted-text border-t border-border pt-1.5">Leaders can view progress but cannot update it unless explicitly permitted.</p>
-          </div>
         </div>
       </div>
     </div>
