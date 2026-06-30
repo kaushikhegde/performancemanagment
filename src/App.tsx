@@ -3275,11 +3275,6 @@ const MyGoalsView = ({ onOpenGoal }: { onOpenGoal: (id: string) => void }) => {
                         <div className="flex items-center gap-1.5 mt-1">
                           {goal.source === 'D365 Import' && <span className="text-[9px] uppercase tracking-wider bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">D365</span>}
                           {goal.approved && <span className="text-[9px] uppercase tracking-wider bg-green-100 text-green-700 px-1.5 py-0.5 rounded flex items-center gap-0.5"><CheckCircle2 size={8} /> Approved</span>}
-                          {goal.visibility === 'Owner Only' ? (
-                            <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded flex items-center gap-0.5" title="Private — excluded from manager review, reporting and search"><Eye size={9} /> Owner only · excluded from search</span>
-                          ) : (
-                            <span className="text-[10px] text-muted-text flex items-center gap-0.5"><Eye size={9} /> {goal.visibility}</span>
-                          )}
                         </div>
                       </td>
                       <td className="table-cell">
