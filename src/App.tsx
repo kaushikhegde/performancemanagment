@@ -122,6 +122,7 @@ import { generateBriefing, type DashboardContext, type Briefing } from './lib/da
 import { polishFeedback, type FeedbackPolish } from './lib/feedbackCoach';
 import { draftGoalReflection, draftOverallSummary } from './lib/selfAssessmentCoach';
 import { synthesizeInsights, type InsightsResult } from './lib/feedbackInsightsCoach';
+import { assessGoalRisk, type SentinelResult } from './lib/progressSentinel';
 import { EMPLOYEES, COMPANY_GOALS, REVIEW_CYCLES, FEEDBACK, MY_GOALS, GOAL_TYPES, SCYNE_VALUES, GOAL_VISIBILITY_OPTIONS, PROGRESS_STATUSES, SKILLS_PASSPORT, D365_IMPORT_GOALS, ROLE_PROFILES, COMPETENCIES, FEEDBACK_REQUESTS, REMINDER_SCHEDULE, NOTIFICATIONS, TASKS, FEEDBACK_THEMES, CHECK_IN_LOG, GRADE_EXPECTATIONS } from './data/mockData';
 import { Status, Goal, CheckIn } from './types';
 
@@ -4367,6 +4368,34 @@ const GoalDetailView = ({ goalId, onBack }: { goalId?: string | null; onBack: ()
 
   const risk = goalRisk({ ...base, progress, status });
 
+  // Progress Sentinel (AI risk forecast)
+  const [sentinel, setSentinel] = useState<SentinelResult | null>(null);
+  const [sentinelLoading, setSentinelLoading] = useState(false);
+
+  const runSentinel = async () => {
+    if (sentinelLoading) return;
+    setSentinelLoading(true);
+    try {
+      const due = new Date(base.dueDate + 'T00:00:00');
+      const daysToDue = Math.ceil((due.getTime() - TODAY.getTime()) / 86_400_000);
+      const nextMs = milestones.filter((m) => !m.completed).sort((a, b) => (a.targetDate < b.targetDate ? -1 : 1))[0];
+      setSentinel(await assessGoalRisk({
+        title: base.title,
+        progress,
+        status,
+        dueDate: base.dueDate,
+        daysToDue,
+        weight: base.weight,
+        milestonesDone: milestones.filter((m) => m.completed).length,
+        milestonesTotal: milestones.length,
+        nextMilestoneDate: nextMs ? fmtDate(nextMs.targetDate) : undefined,
+        progressTrend: history.map((h) => ({ date: (h.date || '').slice(0, 10), value: h.value })),
+      }));
+    } finally {
+      setSentinelLoading(false);
+    }
+  };
+
   const addUpdate = () => {
     setHistory((prev) => [...prev, { id: 'pn' + prev.length, date: '2026-06-23 09:00', value: newValue, status: newStatus, note: newNote || undefined, by: 'Sarah Chen' }]);
     setChangeLog((prev) => {
@@ -4425,6 +4454,39 @@ const GoalDetailView = ({ goalId, onBack }: { goalId?: string | null; onBack: ()
       <div className="card space-y-2">
         <div className="flex items-center justify-between text-[12px]"><span className="font-semibold">Progress</span><Badge status={status} /></div>
         <ProgressBar progress={progress} className="h-2.5" />
+      </div>
+
+      {/* Progress Sentinel — AI risk forecast */}
+      <div className="card bg-gradient-to-br from-indigo-50 to-white border-indigo-200 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-full bg-primary-action flex items-center justify-center"><Sparkles size={14} className="text-white" /></div>
+            <h3 className="font-bold text-[14px]">Progress Sentinel</h3>
+            {sentinel?.isMock && <span className="text-[10px] text-muted-text">(AI not configured — heuristic)</span>}
+          </div>
+          <button onClick={runSentinel} disabled={sentinelLoading} className="btn-primary py-1.5 text-[12px] flex items-center gap-1.5 disabled:opacity-50">
+            {sentinelLoading ? <RefreshCw size={12} className="animate-spin" /> : <Sparkles size={12} />}
+            {sentinelLoading ? 'Analyzing…' : sentinel ? 'Re-analyze' : 'Forecast risk'}
+          </button>
+        </div>
+        {sentinel ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className={cn('text-[11px] font-bold px-2 py-0.5 rounded', sentinel.riskLevel === 'On Track' ? 'bg-green-100 text-green-700' : sentinel.riskLevel === 'At Risk' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700')}>{sentinel.riskLevel}</span>
+              <span className={cn('text-[12px] font-medium flex items-center gap-1', sentinel.willMeetDeadline ? 'text-green-700' : 'text-red-700')}>
+                {sentinel.willMeetDeadline ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
+                {sentinel.willMeetDeadline ? 'On pace to meet the deadline' : 'Unlikely to meet the deadline at current pace'}
+              </span>
+            </div>
+            <p className="text-[12.5px] text-primary-text leading-relaxed"><span className="font-bold">Why: </span>{sentinel.rationale}</p>
+            <div className="border-t border-indigo-200 pt-2 space-y-1">
+              <p className="text-[11px] font-bold text-primary-action">Recommended actions</p>
+              <ul className="list-disc pl-5 space-y-0.5">{sentinel.recommendations.map((r, i) => <li key={i} className="text-[12px]">{r}</li>)}</ul>
+            </div>
+          </div>
+        ) : (
+          <p className="text-[12px] text-muted-text">Forecast whether this goal will hit its due date — based on progress, days remaining, milestones and your recent update pace.</p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
