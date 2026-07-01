@@ -2597,6 +2597,38 @@ const SelfAssessmentView = ({ onBack }: { onBack: () => void }) => {
   const [ratings, setRatings] = useState<Record<string, string>>({});
   const [comments, setComments] = useState<Record<string, string>>({});
 
+  // Self-Assessment assistant state
+  const [goalDraftLoading, setGoalDraftLoading] = useState(false);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [reflectionPrompts, setReflectionPrompts] = useState<string[]>([]);
+
+  const draftCurrentGoal = async () => {
+    if (goalDraftLoading) return;
+    const g = goals[currentGoalIndex];
+    setGoalDraftLoading(true);
+    try {
+      const res = await draftGoalReflection({ goalTitle: g.title, goalDescription: g.description, selfRating: ratings[g.id] });
+      setComments((prev) => ({ ...prev, [g.id]: res.text }));
+    } finally {
+      setGoalDraftLoading(false);
+    }
+  };
+
+  const draftSummary = async () => {
+    if (summaryLoading) return;
+    setSummaryLoading(true);
+    try {
+      const res = await draftOverallSummary({
+        goals: goals.map((g) => ({ title: g.title, rating: ratings[g.id], comment: comments[g.id] })),
+        competencies: competencies.map((c) => ({ title: c.title, rating: ratings[c.id] })),
+      });
+      setComments((prev) => ({ ...prev, 'overall_summary': res.summary }));
+      setReflectionPrompts(res.reflectionPrompts);
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
+
   const goals = [
     { id: '1', title: 'Grow ARR to $50M by EOY', description: 'Scale Annual Recurring Revenue through expansion and new logos.', weight: 25 },
     { id: '2', title: 'Launch Enterprise Tier', description: 'Complete beta and launch the new enterprise subscription tier.', weight: 25 },
@@ -2719,13 +2751,25 @@ const SelfAssessmentView = ({ onBack }: { onBack: () => void }) => {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[13px] font-bold block">Self-Commentary</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[13px] font-bold block">Self-Commentary</label>
+                    <button
+                      onClick={draftCurrentGoal}
+                      disabled={goalDraftLoading}
+                      title="Draft this goal's self-commentary with AI"
+                      className="text-[11px] font-bold text-primary-action hover:underline flex items-center gap-1 disabled:opacity-50"
+                    >
+                      {goalDraftLoading ? <RefreshCw size={11} className="animate-spin" /> : <Sparkles size={11} />}
+                      {goalDraftLoading ? 'Drafting…' : 'Draft with AI'}
+                    </button>
+                  </div>
                   <textarea
                     value={comments[goals[currentGoalIndex].id] || ''}
                     onChange={(e) => setComments({ ...comments, [goals[currentGoalIndex].id]: e.target.value })}
                     placeholder="Describe your achievements, challenges, and impact..."
                     className="w-full border border-border rounded-[2px] p-3 text-[13px] min-h-[120px] focus:outline-none focus:ring-1 focus:ring-primary-action"
                   />
+                  <p className="text-[10px] text-muted-text">AI drafts from your goal and self-rating — always review and edit before submitting.</p>
                 </div>
 
                 <div className="flex items-center justify-between pt-4 border-t border-border">
@@ -2821,8 +2865,31 @@ const SelfAssessmentView = ({ onBack }: { onBack: () => void }) => {
               className="space-y-6"
             >
               <div className="card-review space-y-4">
-                <h3 className="text-[15px] font-bold">Overall Summary</h3>
-                <p className="text-[12px] text-muted-text">Reflect on your overall performance this period. What are you most proud of? Where do you want to grow next?</p>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <h3 className="text-[15px] font-bold">Overall Summary</h3>
+                    <p className="text-[12px] text-muted-text">Reflect on your overall performance this period. What are you most proud of? Where do you want to grow next?</p>
+                  </div>
+                  <button
+                    onClick={draftSummary}
+                    disabled={summaryLoading}
+                    title="Compile a first-draft summary from your goals & competencies"
+                    className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded hover:bg-indigo-100 transition-all disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {summaryLoading ? <RefreshCw size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                    {summaryLoading ? 'Drafting…' : 'Draft with AI'}
+                  </button>
+                </div>
+
+                {reflectionPrompts.length > 0 && (
+                  <div className="bg-indigo-50/60 border border-indigo-200 rounded-[4px] p-3 space-y-1.5">
+                    <p className="text-[11px] font-bold text-indigo-900 flex items-center gap-1"><Sparkles size={11} /> Reflection prompts</p>
+                    <ul className="list-disc pl-5 space-y-0.5">
+                      {reflectionPrompts.map((p, i) => <li key={i} className="text-[12px] text-indigo-900">{p}</li>)}
+                    </ul>
+                  </div>
+                )}
+
                 <textarea
                   value={comments['overall_summary'] || ''}
                   onChange={(e) => setComments({ ...comments, 'overall_summary': e.target.value })}
