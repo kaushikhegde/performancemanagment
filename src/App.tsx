@@ -120,6 +120,7 @@ import { draftReview, draftGoalComment, type ReviewContext, type GoalReviewDraft
 import { summarizeCheckIns, type CheckInSummary } from './lib/checkInCoach';
 import { generateBriefing, type DashboardContext, type Briefing } from './lib/dashboardCoach';
 import { polishFeedback, type FeedbackPolish } from './lib/feedbackCoach';
+import { draftGoalReflection, draftOverallSummary } from './lib/selfAssessmentCoach';
 import { EMPLOYEES, COMPANY_GOALS, REVIEW_CYCLES, FEEDBACK, MY_GOALS, GOAL_TYPES, SCYNE_VALUES, GOAL_VISIBILITY_OPTIONS, PROGRESS_STATUSES, SKILLS_PASSPORT, D365_IMPORT_GOALS, ROLE_PROFILES, COMPETENCIES, FEEDBACK_REQUESTS, REMINDER_SCHEDULE, NOTIFICATIONS, TASKS, FEEDBACK_THEMES, CHECK_IN_LOG, GRADE_EXPECTATIONS } from './data/mockData';
 import { Status, Goal, CheckIn } from './types';
 
