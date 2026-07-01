@@ -4126,7 +4126,7 @@ const AdminView = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center border-b border-border">
-        {['Cycle Builder', 'Competencies', 'Form Builder', 'Automation Rules', 'Notification Rules', 'Role Permissions', 'Security & Data'].map((tab) => (
+        {['Cycle Builder', 'Form Builder', 'Automation Rules', 'Notification Rules'].map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -4148,8 +4148,6 @@ const AdminView = () => {
         {activeTab === 'Form Builder' && <FormBuilderView />}
         {activeTab === 'Automation Rules' && <AutomationRulesView />}
         {activeTab === 'Notification Rules' && <NotificationRulesView />}
-        {activeTab === 'Role Permissions' && <RolePermissionsView />}
-        {activeTab === 'Security & Data' && <SecurityDataView />}
       </div>
     </div>
   );
@@ -4890,28 +4888,6 @@ export default function App() {
               <div className="flex items-center gap-3">
                 <h2 className="text-[16px] sm:text-[18px] font-semibold">{activeView}</h2>
                 {activeView === 'Dashboard' && <Badge status="Active" />}
-                {activeView === 'Reviews' && (
-                  <div className="flex items-center bg-gray-100 rounded-[4px] p-0.5 ml-2">
-                    <button 
-                      onClick={() => setRoleMode('Direct')}
-                      className={cn(
-                        "px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded-[2px] transition-all",
-                        roleMode === 'Direct' ? "bg-white text-primary-action shadow-sm" : "text-muted-text hover:text-primary-text"
-                      )}
-                    >
-                      Direct Manager
-                    </button>
-                    <button 
-                      onClick={() => setRoleMode('Skip-Level')}
-                      className={cn(
-                        "px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded-[2px] transition-all",
-                        roleMode === 'Skip-Level' ? "bg-white text-primary-action shadow-sm" : "text-muted-text hover:text-primary-text"
-                      )}
-                    >
-                      Skip-Level
-                    </button>
-                  </div>
-                )}
               </div>
               <div className="hidden sm:block text-[12px] text-muted-text">
                 Management / {activeView}
