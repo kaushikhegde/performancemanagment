@@ -3450,12 +3450,12 @@ const TeamGoalsView = () => {
       </div>
 
       <div className="card space-y-4">
-        <h3 className="font-semibold text-[14px]">Company Goal Coverage — Your Team</h3>
+        <h3 className="font-semibold text-[14px]">Practice Goal Coverage — Your Team</h3>
         <div className="overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
               <tr>
-                <th className="table-header">Company Goal</th>
+                <th className="table-header">Practice Goal</th>
                 <th className="table-header">Team Members Contributing</th>
                 <th className="table-header">Coverage Status</th>
               </tr>
@@ -4919,10 +4919,6 @@ export default function App() {
             </div>
             <div className="flex items-center gap-2">
               <NotificationCenter />
-              <button className="btn-primary flex items-center gap-2">
-                <Plus size={14} />
-                <span className="hidden sm:inline">Create New</span>
-              </button>
             </div>
           </header>
         )}
