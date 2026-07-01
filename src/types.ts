@@ -84,6 +84,8 @@ export interface Goal {
   status: Status;
   dueDate: string;
   dateCreated?: string;
+  /** Review cycle this goal belongs to, e.g. "FY 2025–26 Year-End" */
+  cycle?: string;
   weight?: number;
   keyResults?: KeyResult[];
   teamsAligned?: number;

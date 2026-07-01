@@ -3191,6 +3191,20 @@ const MyGoalsView = ({ onOpenGoal }: { onOpenGoal: (id: string) => void }) => {
   const [activeTab, setActiveTab] = useState('My Goals');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [goals, setGoals] = useState<Goal[]>(MY_GOALS);
+  const [cycleFilter, setCycleFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState('All');
+  const [riskFilter, setRiskFilter] = useState('All');
+
+  const cycleOptions = Array.from(new Set(goals.map((g) => g.cycle).filter(Boolean))) as string[];
+  const riskBucket = (g: Goal) => {
+    const r = goalRisk(g);
+    return r.overdue ? 'Overdue' : r.atRisk ? 'At Risk' : 'On track';
+  };
+  const visibleGoals = goals.filter((g) =>
+    (cycleFilter === 'All' || g.cycle === cycleFilter) &&
+    (statusFilter === 'All' || g.status === statusFilter) &&
+    (riskFilter === 'All' || riskBucket(g) === riskFilter)
+  );
 
   const setStatus = (id: string, status: Status) =>
     setGoals((prev) => prev.map((g) => g.id === id ? { ...g, status, progress: status === 'Completed' ? 100 : g.progress } : g));
@@ -3240,7 +3254,11 @@ const MyGoalsView = ({ onOpenGoal }: { onOpenGoal: (id: string) => void }) => {
                 <option value="FY2026">FY2026 (current)</option>
                 <option>Previous years — coming soon</option>
               </select>
-              <button className="btn-outline">Status</button>
+              {(cycleFilter !== 'All' || statusFilter !== 'All' || riskFilter !== 'All') && (
+                <button onClick={() => { setCycleFilter('All'); setStatusFilter('All'); setRiskFilter('All'); }} className="btn-outline flex items-center gap-1.5 text-primary-action border-primary-action">
+                  <X size={12} /> Clear filters
+                </button>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <button onClick={() => setIsDrawerOpen(true)} className="btn-primary flex items-center gap-2"><Plus size={14} /> Add Goal</button>
@@ -3255,15 +3273,55 @@ const MyGoalsView = ({ onOpenGoal }: { onOpenGoal: (id: string) => void }) => {
                   <th className="table-header">Goal</th>
                   <th className="table-header">Type</th>
                   <th className="table-header">Date Created</th>
+                  <th className="table-header">
+                    <div className="flex items-center gap-1.5">
+                      <span>Cycle</span>
+                      <select
+                        value={cycleFilter}
+                        onChange={(e) => setCycleFilter(e.target.value)}
+                        className={cn("cal-group-select text-[10px] py-0.5 pl-1.5 pr-5 normal-case font-normal", cycleFilter !== 'All' && "border-primary-action text-primary-action")}
+                        title="Filter by cycle"
+                      >
+                        <option value="All">All</option>
+                        {cycleOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                  </th>
                   <th className="table-header">Progress</th>
                   <th className="table-header">Milestones</th>
-                  <th className="table-header">Risk</th>
-                  <th className="table-header">Status</th>
+                  <th className="table-header">
+                    <div className="flex items-center gap-1.5">
+                      <span>Risk</span>
+                      <select
+                        value={riskFilter}
+                        onChange={(e) => setRiskFilter(e.target.value)}
+                        className={cn("cal-group-select text-[10px] py-0.5 pl-1.5 pr-5 normal-case font-normal", riskFilter !== 'All' && "border-primary-action text-primary-action")}
+                        title="Filter by risk"
+                      >
+                        <option value="All">All</option>
+                        {['On track', 'At Risk', 'Overdue'].map((r) => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                    </div>
+                  </th>
+                  <th className="table-header">
+                    <div className="flex items-center gap-1.5">
+                      <span>Status</span>
+                      <select
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                        className={cn("cal-group-select text-[10px] py-0.5 pl-1.5 pr-5 normal-case font-normal", statusFilter !== 'All' && "border-primary-action text-primary-action")}
+                        title="Filter by status"
+                      >
+                        <option value="All">All</option>
+                        {PROGRESS_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                  </th>
                   <th className="table-header w-10"></th>
                 </tr>
               </thead>
               <tbody>
-                {goals.map((goal, i) => {
+                {visibleGoals.map((goal, i) => {
                   const risk = goalRisk(goal);
                   const ms = goal.milestones || [];
                   const msDone = ms.filter((m) => m.completed).length;
@@ -3283,6 +3341,9 @@ const MyGoalsView = ({ onOpenGoal }: { onOpenGoal: (id: string) => void }) => {
                         </div>
                       </td>
                       <td className="table-cell text-muted-text text-[11px]">{goal.dateCreated ? fmtDate(goal.dateCreated) : '—'}</td>
+                      <td className="table-cell text-[11px]">
+                        {goal.cycle ? <span className="inline-block bg-gray-100 text-primary-text px-1.5 py-0.5 rounded">{goal.cycle}</span> : <span className="text-muted-text">—</span>}
+                      </td>
                       <td className="table-cell w-40">
                         <div className="flex items-center gap-2">
                           <ProgressBar progress={goal.progress} />
@@ -3872,18 +3933,37 @@ const GradeExpectationsView = () => {
   );
 };
 
+type Cycle = { name: string; status: string; type: string; launchDate: string };
+
 const CycleBuilder = () => {
+  const [cycles, setCycles] = useState<Cycle[]>([
+    { name: 'FY 2025–26 Year-End', status: 'In Progress', type: 'Annual', launchDate: 'Mar 01, 2026' },
+    { name: 'Q1 2026 Check-in', status: 'Scheduled', type: 'Quarterly', launchDate: 'Jun 01, 2026' },
+  ]);
+  const [editing, setEditing] = useState<{ index: number; draft: Cycle } | null>(null);
+  const [managing, setManaging] = useState<number | null>(null);
+  const [creating, setCreating] = useState<Cycle | null>(null);
+
+  const saveEdit = () => {
+    if (!editing) return;
+    setCycles((prev) => prev.map((c, i) => (i === editing.index ? editing.draft : c)));
+    setEditing(null);
+  };
+
+  const saveNew = () => {
+    if (!creating || !creating.name.trim()) return;
+    setCycles((prev) => [...prev, creating]);
+    setCreating(null);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h3 className="text-[16px] font-bold">Cycle Builder</h3>
-        <button className="btn-primary">+ Create New Cycle</button>
+        <button onClick={() => setCreating({ name: '', status: 'Scheduled', type: 'Annual', launchDate: '' })} className="btn-primary">+ Create New Cycle</button>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {[
-          { name: 'FY 2025–26 Year-End', status: 'In Progress', type: 'Annual', launchDate: 'Mar 01, 2026' },
-          { name: 'Q1 2026 Check-in', status: 'Scheduled', type: 'Quarterly', launchDate: 'Jun 01, 2026' },
-        ].map((cycle, i) => (
+        {cycles.map((cycle, i) => (
           <div key={i} className="card space-y-4">
             <div className="flex justify-between items-start">
               <h4 className="text-[15px] font-bold">{cycle.name}</h4>
@@ -3900,12 +3980,156 @@ const CycleBuilder = () => {
               </div>
             </div>
             <div className="pt-4 border-t border-border flex justify-end gap-2">
-              <button className="btn-outline py-1 px-3 text-[11px]">Edit</button>
-              <button className="btn-primary py-1 px-3 text-[11px]">Manage</button>
+              <button onClick={() => setEditing({ index: i, draft: { ...cycle } })} className="btn-outline py-1 px-3 text-[11px]">Edit</button>
+              <button onClick={() => setManaging(i)} className="btn-primary py-1 px-3 text-[11px]">Manage</button>
             </div>
           </div>
         ))}
       </div>
+
+      {/* Create Cycle modal */}
+      <AnimatePresence>
+        {creating && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setCreating(null)} className="fixed inset-0 bg-black/30 z-40 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }} className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[480px] bg-white rounded-[8px] shadow-xl z-50 flex flex-col">
+              <div className="flex items-center justify-between p-5 border-b border-border">
+                <h3 className="font-bold text-[16px]">Create New Cycle</h3>
+                <button onClick={() => setCreating(null)} className="text-muted-text hover:text-primary-text"><X size={18} /></button>
+              </div>
+              <div className="p-5 space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-muted-text uppercase tracking-wider">Cycle Name</label>
+                  <input value={creating.name} onChange={(e) => setCreating({ ...creating, name: e.target.value })} placeholder="e.g. FY 2026–27 Year-End" className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:border-primary-action" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-muted-text uppercase tracking-wider">Type</label>
+                    <select value={creating.type} onChange={(e) => setCreating({ ...creating, type: e.target.value })} className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:border-primary-action">
+                      <option>Annual</option>
+                      <option>Quarterly</option>
+                      <option>Mid-Year</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-muted-text uppercase tracking-wider">Status</label>
+                    <select value={creating.status} onChange={(e) => setCreating({ ...creating, status: e.target.value })} className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:border-primary-action">
+                      <option>Scheduled</option>
+                      <option>In Progress</option>
+                      <option>Completed</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-muted-text uppercase tracking-wider">Launch Date</label>
+                  <input value={creating.launchDate} onChange={(e) => setCreating({ ...creating, launchDate: e.target.value })} placeholder="e.g. Mar 01, 2027" className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:border-primary-action" />
+                </div>
+              </div>
+              <div className="flex gap-2 p-5 border-t border-border">
+                <button onClick={saveNew} disabled={!creating.name.trim()} className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed">Create Cycle</button>
+                <button onClick={() => setCreating(null)} className="btn-outline flex-1">Cancel</button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Cycle modal */}
+      <AnimatePresence>
+        {editing && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setEditing(null)} className="fixed inset-0 bg-black/30 z-40 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }} className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[480px] bg-white rounded-[8px] shadow-xl z-50 flex flex-col">
+              <div className="flex items-center justify-between p-5 border-b border-border">
+                <h3 className="font-bold text-[16px]">Edit Cycle</h3>
+                <button onClick={() => setEditing(null)} className="text-muted-text hover:text-primary-text"><X size={18} /></button>
+              </div>
+              <div className="p-5 space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-muted-text uppercase tracking-wider">Cycle Name</label>
+                  <input value={editing.draft.name} onChange={(e) => setEditing({ ...editing, draft: { ...editing.draft, name: e.target.value } })} className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:border-primary-action" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-muted-text uppercase tracking-wider">Type</label>
+                    <select value={editing.draft.type} onChange={(e) => setEditing({ ...editing, draft: { ...editing.draft, type: e.target.value } })} className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:border-primary-action">
+                      <option>Annual</option>
+                      <option>Quarterly</option>
+                      <option>Mid-Year</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-muted-text uppercase tracking-wider">Status</label>
+                    <select value={editing.draft.status} onChange={(e) => setEditing({ ...editing, draft: { ...editing.draft, status: e.target.value } })} className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:border-primary-action">
+                      <option>Scheduled</option>
+                      <option>In Progress</option>
+                      <option>Completed</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-muted-text uppercase tracking-wider">Launch Date</label>
+                  <input value={editing.draft.launchDate} onChange={(e) => setEditing({ ...editing, draft: { ...editing.draft, launchDate: e.target.value } })} className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:border-primary-action" />
+                </div>
+              </div>
+              <div className="flex gap-2 p-5 border-t border-border">
+                <button onClick={saveEdit} className="btn-primary flex-1">Save Changes</button>
+                <button onClick={() => setEditing(null)} className="btn-outline flex-1">Cancel</button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Manage Cycle modal */}
+      <AnimatePresence>
+        {managing !== null && cycles[managing] && (
+          <>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setManaging(null)} className="fixed inset-0 bg-black/30 z-40 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }} className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[520px] bg-white rounded-[8px] shadow-xl z-50 flex flex-col max-h-[88vh]">
+              <div className="flex items-center justify-between p-5 border-b border-border">
+                <div>
+                  <h3 className="font-bold text-[16px]">{cycles[managing].name}</h3>
+                  <p className="text-[12px] text-muted-text">{cycles[managing].type} · Launches {cycles[managing].launchDate}</p>
+                </div>
+                <button onClick={() => setManaging(null)} className="text-muted-text hover:text-primary-text"><X size={18} /></button>
+              </div>
+              <div className="p-5 space-y-5 overflow-y-auto">
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { label: 'Participants', value: '128' },
+                    { label: 'Completed', value: '54%' },
+                    { label: 'Overdue', value: '9' },
+                  ].map((s) => (
+                    <div key={s.label} className="card text-center py-3">
+                      <p className="text-[20px] font-bold">{s.value}</p>
+                      <p className="text-[10px] text-muted-text uppercase font-bold tracking-wider">{s.label}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="space-y-2">
+                  <h4 className="text-[11px] font-bold text-muted-text uppercase tracking-wider">Stages</h4>
+                  {[
+                    { name: 'Self-Assessment', status: 'Completed' },
+                    { name: 'Manager Review', status: 'In Progress' },
+                    { name: 'Calibration', status: 'Scheduled' },
+                    { name: 'Release to Employees', status: 'Scheduled' },
+                  ].map((stage) => (
+                    <div key={stage.name} className="flex items-center justify-between p-3 border border-border rounded-[4px]">
+                      <span className="text-[13px] font-medium">{stage.name}</span>
+                      <Badge status={stage.status} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-2 p-5 border-t border-border">
+                <button onClick={() => setManaging(null)} className="btn-primary flex-1">Send Reminders</button>
+                <button onClick={() => setManaging(null)} className="btn-outline flex-1">Close</button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

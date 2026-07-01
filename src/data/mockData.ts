@@ -73,6 +73,7 @@ export const MY_GOALS: Goal[] = [
     status: 'On Track',
     dueDate: '2026-07-31',
     dateCreated: '2026-03-01',
+    cycle: 'FY 2025–26 Year-End',
     approved: true,
     weight: 30,
     changeHistory: [
@@ -115,6 +116,7 @@ export const MY_GOALS: Goal[] = [
     status: 'Needs Improvement',
     dueDate: '2026-05-30',
     dateCreated: '2026-02-10',
+    cycle: 'FY 2025–26 Year-End',
     approved: true,
     weight: 20,
     changeHistory: [
@@ -149,6 +151,7 @@ export const MY_GOALS: Goal[] = [
     status: 'Completed',
     dueDate: '2026-03-31',
     dateCreated: '2025-12-15',
+    cycle: 'Q4 2025 Check-in',
     approved: true,
     weight: 15,
     changeHistory: [
@@ -180,6 +183,7 @@ export const MY_GOALS: Goal[] = [
     status: 'At Risk',
     dueDate: '2026-06-25',
     dateCreated: '2026-04-01',
+    cycle: 'Q1 2026 Check-in',
     approved: false,
     weight: 15,
     changeHistory: [
