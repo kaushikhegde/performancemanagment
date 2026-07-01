@@ -117,6 +117,7 @@ import { cn } from './lib/utils';
 import { draftGoal, scoreAlignment, type AlignmentResult } from './lib/goalCoach';
 import { summarizeCoverage, draftReviewComment } from './lib/teamGoalsCoach';
 import { draftReview, draftGoalComment, type ReviewContext, type GoalReviewDraft, type ManagerReviewDraft } from './lib/reviewWriter';
+import { summarizeCheckIns, type CheckInSummary } from './lib/checkInCoach';
 import { EMPLOYEES, COMPANY_GOALS, REVIEW_CYCLES, FEEDBACK, MY_GOALS, GOAL_TYPES, SCYNE_VALUES, GOAL_VISIBILITY_OPTIONS, PROGRESS_STATUSES, SKILLS_PASSPORT, D365_IMPORT_GOALS, ROLE_PROFILES, COMPETENCIES, FEEDBACK_REQUESTS, REMINDER_SCHEDULE, NOTIFICATIONS, TASKS, FEEDBACK_THEMES, CHECK_IN_LOG, GRADE_EXPECTATIONS } from './data/mockData';
 import { Status, Goal, CheckIn } from './types';
 
@@ -3647,6 +3648,20 @@ const CheckInLogView = ({ checkIns, setCheckIns }: { checkIns: CheckIn[]; setChe
   const [withPerson, setWithPerson] = useState('');
   const [notes, setNotes] = useState('');
 
+  // AI summary of all check-ins
+  const [summary, setSummary] = useState<CheckInSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+
+  const handleSummarize = async () => {
+    if (summaryLoading) return;
+    setSummaryLoading(true);
+    try {
+      setSummary(await summarizeCheckIns(checkIns));
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
+
   const save = () => {
     if (!withPerson.trim() && !notes.trim()) return;
     setCheckIns((prev) => [
@@ -3665,8 +3680,39 @@ const CheckInLogView = ({ checkIns, setCheckIns }: { checkIns: CheckIn[]; setChe
           <h3 className="font-semibold text-[14px]">Check-in Log</h3>
           <p className="text-[12px] text-muted-text">A general log of discussions with your people leader or colleagues. Not tied to a specific goal.</p>
         </div>
-        <button onClick={() => setAdding((a) => !a)} className="btn-primary flex items-center gap-2"><Plus size={14} /> Add Check-In</button>
+        <div className="flex items-center gap-2">
+          <button onClick={handleSummarize} disabled={summaryLoading || checkIns.length === 0} title={checkIns.length === 0 ? 'No check-ins to summarize' : 'Summarize all check-ins with AI'} className="btn-outline flex items-center gap-2 text-primary-action border-primary-action disabled:opacity-50 disabled:cursor-not-allowed">
+            {summaryLoading ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
+            {summaryLoading ? 'Summarizing…' : 'Summarize check-ins'}
+          </button>
+          <button onClick={() => setAdding((a) => !a)} className="btn-primary flex items-center gap-2"><Plus size={14} /> Add Check-In</button>
+        </div>
       </div>
+
+      {summary && (
+        <div className="border border-indigo-200 bg-indigo-50/60 rounded-[6px] p-4 space-y-2">
+          <div className="flex items-center gap-2 text-indigo-900">
+            <Sparkles size={14} className="text-indigo-600" />
+            <span className="text-[13px] font-bold">Check-in Summary</span>
+            {summary.isMock && <span className="text-[10px] text-muted-text">(AI not configured — heuristic summary)</span>}
+          </div>
+          <p className="text-[12.5px] text-indigo-900">{summary.summary}</p>
+          {summary.themes.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] font-bold text-indigo-900/70">Themes:</span>
+              {summary.themes.map((t) => <span key={t} className="text-[11px] bg-white border border-indigo-200 text-indigo-700 px-1.5 py-0.5 rounded capitalize">{t}</span>)}
+            </div>
+          )}
+          {summary.actionItems.length > 0 && (
+            <div className="space-y-1 pt-1">
+              <span className="text-[11px] font-bold text-indigo-900/70">Open follow-ups:</span>
+              <ul className="list-disc pl-5 space-y-0.5">
+                {summary.actionItems.map((a, i) => <li key={i} className="text-[12px] text-indigo-900">{a}</li>)}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       {adding && (
         <div className="card space-y-3 bg-gray-50">
