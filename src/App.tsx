@@ -121,6 +121,7 @@ import { summarizeCheckIns, type CheckInSummary } from './lib/checkInCoach';
 import { generateBriefing, type DashboardContext, type Briefing } from './lib/dashboardCoach';
 import { polishFeedback, type FeedbackPolish } from './lib/feedbackCoach';
 import { draftGoalReflection, draftOverallSummary } from './lib/selfAssessmentCoach';
+import { synthesizeInsights, type InsightsResult } from './lib/feedbackInsightsCoach';
 import { EMPLOYEES, COMPANY_GOALS, REVIEW_CYCLES, FEEDBACK, MY_GOALS, GOAL_TYPES, SCYNE_VALUES, GOAL_VISIBILITY_OPTIONS, PROGRESS_STATUSES, SKILLS_PASSPORT, D365_IMPORT_GOALS, ROLE_PROFILES, COMPETENCIES, FEEDBACK_REQUESTS, REMINDER_SCHEDULE, NOTIFICATIONS, TASKS, FEEDBACK_THEMES, CHECK_IN_LOG, GRADE_EXPECTATIONS } from './data/mockData';
 import { Status, Goal, CheckIn } from './types';
 
@@ -1360,8 +1361,64 @@ const FeedbackInsightsView = () => {
   ];
   const heatColor = (v: number) => v >= 4.4 ? 'bg-green-500' : v >= 4.0 ? 'bg-green-300' : v >= 3.5 ? 'bg-amber-300' : 'bg-red-300';
 
+  // AI synthesis state
+  const [insights, setInsights] = useState<InsightsResult | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+
+  const handleSynthesize = async () => {
+    if (insightsLoading) return;
+    setInsightsLoading(true);
+    try {
+      setInsights(await synthesizeInsights({
+        subject: 'You',
+        avgRating: '4.2',
+        responses: 81,
+        themes: FEEDBACK_THEMES.map((t) => ({ word: t.word, count: t.count })),
+        benchmarks: benchmarks.map((b) => ({ comp: b.comp, percentile: b.you })),
+      }));
+    } finally {
+      setInsightsLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
+      {/* AI synthesis */}
+      <div className="card bg-gradient-to-br from-indigo-50 to-white border-indigo-200 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-full bg-primary-action flex items-center justify-center"><Sparkles size={14} className="text-white" /></div>
+            <h3 className="font-bold text-[14px]">AI Insight Summary</h3>
+            {insights?.isMock && <span className="text-[10px] text-muted-text">(AI not configured — heuristic)</span>}
+          </div>
+          <button onClick={handleSynthesize} disabled={insightsLoading} className="btn-primary py-1.5 text-[12px] flex items-center gap-1.5 disabled:opacity-50">
+            {insightsLoading ? <RefreshCw size={12} className="animate-spin" /> : <Sparkles size={12} />}
+            {insightsLoading ? 'Synthesizing…' : insights ? 'Re-synthesize' : 'Synthesize insights'}
+          </button>
+        </div>
+        {insights ? (
+          <div className="space-y-3">
+            <p className="text-[12.5px] text-primary-text leading-relaxed">{insights.summary}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <p className="text-[11px] font-bold text-green-700 flex items-center gap-1"><CheckCircle2 size={11} /> Strengths</p>
+                <ul className="space-y-0.5">{insights.strengths.map((s, i) => <li key={i} className="text-[12px] flex gap-1.5"><span className="text-green-600">•</span>{s}</li>)}</ul>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[11px] font-bold text-amber-700 flex items-center gap-1"><AlertTriangle size={11} /> Development areas</p>
+                <ul className="space-y-0.5">{insights.developmentAreas.map((s, i) => <li key={i} className="text-[12px] flex gap-1.5"><span className="text-amber-600">•</span>{s}</li>)}</ul>
+              </div>
+            </div>
+            <div className="border-t border-indigo-200 pt-2 space-y-1">
+              <p className="text-[11px] font-bold text-primary-action">Recommended actions</p>
+              <ul className="list-disc pl-5 space-y-0.5">{insights.recommendedActions.map((a, i) => <li key={i} className="text-[12px]">{a}</li>)}</ul>
+            </div>
+          </div>
+        ) : (
+          <p className="text-[12px] text-muted-text">Turn the charts below into a development-ready read — strengths, growth areas and recommended actions, grounded in your themes and benchmarks.</p>
+        )}
+      </div>
+
       {/* Role-appropriate dashboard toggle + filters */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex gap-1.5">
