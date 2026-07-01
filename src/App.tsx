@@ -2633,6 +2633,7 @@ const ManagerReviewView = ({
     { title: 'Grow ARR to $50M by EOY', weight: 25, progress: 100, selfRating: 'Exceeded' },
     { title: 'Launch Enterprise Tier', weight: 25, progress: 85, selfRating: 'Exceeded' },
   ];
+  const reviewEmp = EMPLOYEES.find((e) => e.name === 'Sarah Chen');
   const reviewCtx: ReviewContext = {
     employeeName: 'Sarah Chen',
     role: 'Senior Product Manager',
@@ -2645,6 +2646,12 @@ const ManagerReviewView = ({
       { from: 'Alex Reid', text: 'Sarah did an amazing job leading the Q3 planning session.' },
       { from: 'Direct Report', text: 'Great mentor, always provides clear direction.' },
     ],
+    metrics: reviewEmp ? {
+      salesRevenue: reviewEmp.salesRevenue,
+      timesheetCompliance: reviewEmp.timesheetCompliance,
+      utilization: reviewEmp.utilization,
+      trainingCompliance: reviewEmp.trainingCompliance,
+    } : undefined,
   };
 
   // Review Writer state

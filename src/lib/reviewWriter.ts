@@ -15,6 +15,13 @@ export interface ReviewGoalInput {
   selfRating?: string;
 }
 
+export interface ReviewMetrics {
+  salesRevenue?: number;        // USD
+  timesheetCompliance?: number; // %
+  utilization?: number;         // %
+  trainingCompliance?: number;  // %
+}
+
 export interface ReviewContext {
   employeeName: string;
   role?: string;
@@ -24,6 +31,8 @@ export interface ReviewContext {
   goals: ReviewGoalInput[];
   selfSummary?: string;
   recentFeedback?: { from: string; text: string }[];
+  /** Performance KPIs — the AI factors these into each goal's proposed rating. */
+  metrics?: ReviewMetrics;
 }
 
 export interface GoalReviewDraft {
@@ -50,13 +59,18 @@ export interface ManagerReviewDraft {
 const RATINGS: GoalRating[] = ['Not Met', 'Partial', 'Met', 'Exceeded'];
 
 const SYSTEM = `You are Review Writer, an assistant for a people leader writing a performance review.
-Ground EVERYTHING in the provided evidence (goals, progress, self-assessment, peer feedback).
+Ground EVERYTHING in the provided evidence: goal progress, the employee's performance METRICS
+(sales revenue, utilization %, timesheet compliance %, training compliance %), the self-assessment
+and peer/manager feedback.
 Rules:
+- For EACH goal, propose a rating from exactly: ${RATINGS.join(', ')}. Base it on ALL relevant
+  evidence — goal progress AND the performance metrics AND feedback — and in the goal's 1-2 sentence
+  comment cite the specific metrics/feedback that justify the rating.
 - Write a professional, specific, evidence-based overall summary (4-6 sentences).
 - Suggest an overall rating as a short label like "4.2 (Strong)".
 - Give 2-4 concrete strengths and 1-3 development areas.
-- For EACH goal, suggest a rating from exactly: ${RATINGS.join(', ')}, plus a 1-2 sentence comment citing the progress/evidence.
-- Flag any biased, vague or personality-based language you would avoid (e.g. "not leadership material") and give a specific, behavioural replacement. If none, return an empty list.
+- Flag any biased, vague or personality-based language you would avoid (e.g. "not leadership material")
+  and give a specific, behavioural replacement. If none, return an empty list.
 - Never invent achievements not supported by the evidence. Plain text, no markdown.`;
 
 const goalItemSchema = {
@@ -95,6 +109,15 @@ function buildPrompt(ctx: ReviewContext): string {
   ];
   if (ctx.lastRating) lines.push(`Last rating: ${ctx.lastRating}`);
   if (ctx.goalProgress) lines.push(`Overall goal progress: ${ctx.goalProgress}`);
+  if (ctx.metrics) {
+    const m = ctx.metrics;
+    const parts: string[] = [];
+    if (m.salesRevenue != null) parts.push(`sales revenue $${m.salesRevenue.toLocaleString()}`);
+    if (m.utilization != null) parts.push(`utilization ${m.utilization}%`);
+    if (m.timesheetCompliance != null) parts.push(`timesheet compliance ${m.timesheetCompliance}%`);
+    if (m.trainingCompliance != null) parts.push(`training compliance ${m.trainingCompliance}%`);
+    if (parts.length) lines.push(`Performance metrics: ${parts.join(', ')}`);
+  }
   lines.push('Goals:');
   ctx.goals.forEach((g) =>
     lines.push(`- ${g.title}${g.progress != null ? ` (${g.progress}% complete` : ''}${g.status ? `, ${g.status}` : ''}${g.progress != null ? ')' : ''}${g.selfRating ? `, employee self-rated: ${g.selfRating}` : ''}`)
@@ -109,28 +132,58 @@ function buildPrompt(ctx: ReviewContext): string {
 }
 
 // --- Local fallback ---
-function ratingFromProgress(progress?: number, selfRating?: string): GoalRating {
-  if (selfRating && (RATINGS as string[]).includes(selfRating)) return selfRating as GoalRating;
-  if (progress == null) return 'Met';
-  if (progress >= 100) return 'Exceeded';
-  if (progress >= 70) return 'Met';
-  if (progress >= 40) return 'Partial';
+// Blend goal progress with the performance metrics into a 0-100 evidence score,
+// then map to a rating band. Mirrors how the AI is instructed to reason.
+function evidenceScore(progress: number | undefined, metrics?: ReviewMetrics): number {
+  let score = progress ?? 70;
+  if (metrics) {
+    const signals = [metrics.utilization, metrics.timesheetCompliance, metrics.trainingCompliance]
+      .filter((v): v is number => v != null);
+    if (signals.length) {
+      const avg = signals.reduce((a, b) => a + b, 0) / signals.length;
+      score = Math.round(0.6 * score + 0.4 * avg); // 60% goal delivery, 40% operational metrics
+    }
+  }
+  return score;
+}
+
+function bandFromScore(score: number): GoalRating {
+  if (score >= 95) return 'Exceeded';
+  if (score >= 75) return 'Met';
+  if (score >= 50) return 'Partial';
   return 'Not Met';
+}
+
+function metricEvidence(metrics?: ReviewMetrics): string {
+  if (!metrics) return '';
+  const parts: string[] = [];
+  if (metrics.utilization != null) parts.push(`${metrics.utilization}% utilization`);
+  if (metrics.trainingCompliance != null) parts.push(`${metrics.trainingCompliance}% training compliance`);
+  if (metrics.salesRevenue) parts.push(`$${(metrics.salesRevenue / 1_000_000).toFixed(2)}M revenue`);
+  return parts.slice(0, 2).join(' and ');
 }
 
 function mockReview(ctx: ReviewContext): ManagerReviewDraft {
   const name = ctx.employeeName;
+  const evidence = metricEvidence(ctx.metrics);
   const goals: GoalReviewDraft[] = ctx.goals.map((g) => {
-    const rating = ratingFromProgress(g.progress, g.selfRating);
+    const rating = bandFromScore(evidenceScore(g.progress, ctx.metrics));
+    const strong = rating === 'Exceeded' || rating === 'Met';
     return {
       title: g.title,
       suggestedRating: rating,
-      comment: `${name} reached ${g.progress != null ? `${g.progress}% on` : 'solid progress on'} "${g.title}" (${rating}). ${rating === 'Exceeded' || rating === 'Met' ? 'Strong, consistent delivery against the target.' : 'Support and a clearer plan would help close the gap next cycle.'}`,
+      comment: `${name} reached ${g.progress != null ? `${g.progress}% on` : 'solid progress on'} "${g.title}" (${rating})${evidence ? `, supported by ${evidence}` : ''}. ${strong ? 'Metrics and delivery point to strong, consistent performance.' : 'Metrics suggest support and a clearer plan would help close the gap next cycle.'}`,
     };
   });
+  // Overall rating from the average goal evidence score (metric-driven).
+  const avgScore = goals.length
+    ? Math.round(ctx.goals.reduce((s, g) => s + evidenceScore(g.progress, ctx.metrics), 0) / ctx.goals.length)
+    : 80;
+  const stars = Math.max(1, Math.min(5, +(1 + (avgScore / 100) * 4).toFixed(1)));
+  const label = stars >= 4.5 ? 'Outstanding' : stars >= 4 ? 'Strong' : stars >= 3 ? 'Solid' : stars >= 2 ? 'Developing' : 'Needs Improvement';
   return {
-    overallSummary: `${name} delivered ${ctx.goalProgress ? `${ctx.goalProgress} against` : 'strongly against'} their goals this cycle, with clear impact on ${ctx.goals[0]?.title || 'key objectives'}. Peer and manager feedback highlights reliability and collaboration. Development next cycle should focus on longer-term strategy and broadening visibility. Overall a dependable, high-contributing performer.`,
-    suggestedOverallRating: ctx.lastRating || '4.0 (Strong)',
+    overallSummary: `${name} delivered ${ctx.goalProgress ? `${ctx.goalProgress} against` : 'strongly against'} their goals this cycle${evidence ? `, backed by ${evidence}` : ''}, with clear impact on ${ctx.goals[0]?.title || 'key objectives'}. Peer and manager feedback highlights reliability and collaboration. Development next cycle should focus on longer-term strategy and broadening visibility. Overall a dependable, high-contributing performer.`,
+    suggestedOverallRating: `${stars} (${label})`,
     strengths: ['Consistent goal delivery', 'Strong collaboration and mentoring', 'Reliable execution under pressure'],
     developmentAreas: ['Long-term strategic thinking', 'Executive visibility'],
     biasFlags: [],
