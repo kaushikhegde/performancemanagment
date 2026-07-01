@@ -118,6 +118,7 @@ import { draftGoal, scoreAlignment, type AlignmentResult } from './lib/goalCoach
 import { summarizeCoverage, draftReviewComment } from './lib/teamGoalsCoach';
 import { draftReview, draftGoalComment, type ReviewContext, type GoalReviewDraft, type ManagerReviewDraft } from './lib/reviewWriter';
 import { summarizeCheckIns, type CheckInSummary } from './lib/checkInCoach';
+import { generateBriefing, type DashboardContext, type Briefing } from './lib/dashboardCoach';
 import { EMPLOYEES, COMPANY_GOALS, REVIEW_CYCLES, FEEDBACK, MY_GOALS, GOAL_TYPES, SCYNE_VALUES, GOAL_VISIBILITY_OPTIONS, PROGRESS_STATUSES, SKILLS_PASSPORT, D365_IMPORT_GOALS, ROLE_PROFILES, COMPETENCIES, FEEDBACK_REQUESTS, REMINDER_SCHEDULE, NOTIFICATIONS, TASKS, FEEDBACK_THEMES, CHECK_IN_LOG, GRADE_EXPECTATIONS } from './data/mockData';
 import { Status, Goal, CheckIn } from './types';
 
@@ -1490,6 +1491,30 @@ const FeedbackView = () => {
   const [reveal, setReveal] = useState<Record<number, boolean>>({});
   const [acknowledged, setAcknowledged] = useState<Record<number, boolean>>({});
 
+  // Give Feedback form state
+  const [to, setTo] = useState('');
+  const [recipientSearch, setRecipientSearch] = useState('');
+  const [message, setMessage] = useState('');
+  const [justSent, setJustSent] = useState(false);
+  const [sent, setSent] = useState<{ id: string; to: string; type: string; visibility: string; message: string; date: string }[]>([]);
+
+  const typeIcon: Record<string, string> = { Recognition: '🏆', Constructive: '🔧', General: '💬' };
+  const recipientMatches = recipientSearch.trim()
+    ? EMPLOYEES.filter((e) => e.name.toLowerCase().includes(recipientSearch.toLowerCase()))
+    : [];
+
+  const submitFeedback = () => {
+    if (!to || !message.trim()) return;
+    setSent((prev) => [
+      { id: 'sf' + (prev.length + 1), to, type: feedbackType, visibility, message: message.trim(), date: 'Today' },
+      ...prev,
+    ]);
+    setMessage('');
+    setTo('');
+    setRecipientSearch('');
+    setJustSent(true);
+  };
+
   const receivedFeedback = [
     { id: 1, type: 'Recognition', from: 'Alex Reid', anon: false, score: 4.6, date: '15 Mar 2026', text: 'Sarah showed exceptional leadership during the mobile launch. Her ability to coordinate across engineering and design was outstanding.', icon: '🏆' },
     { id: 2, type: 'Constructive', from: 'Anonymous Peer', anon: true, score: 3.8, date: '10 Mar 2026', text: 'Consider providing more frequent updates on project status to the wider stakeholder group.', icon: '🔧' },
@@ -1593,17 +1618,51 @@ const FeedbackView = () => {
 
           <div className="space-y-4">
             <h3 className="text-[12px] font-bold text-muted-text uppercase tracking-wider">Give Unprompted Feedback</h3>
+
+            {justSent && (
+              <div className="bg-green-50 border border-green-200 rounded-[4px] p-3 flex items-center gap-2 text-green-800">
+                <CheckCircle2 size={15} className="flex-shrink-0" />
+                <span className="text-[12px] font-medium">Feedback sent. You can view it under the <button onClick={() => setActiveTab('Sent')} className="underline font-bold">Sent</button> tab.</span>
+              </div>
+            )}
+
             <div className="card space-y-6">
-              <div className="space-y-2">
+              <div className="space-y-2 relative">
                 <label className="text-[12px] font-bold">To:</label>
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-text" size={14} />
-                  <input 
-                    type="text" 
-                    placeholder="Search employees..." 
-                    className="w-full border border-border rounded-[4px] pl-9 pr-4 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary-action"
-                  />
+                  {to ? (
+                    <div className="w-full border border-primary-action bg-indigo-50 rounded-[4px] pl-3 pr-9 py-2 text-[13px] flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-full bg-indigo-200 text-indigo-800 flex items-center justify-center text-[10px] font-bold">{EMPLOYEES.find((e) => e.name === to)?.avatar || to.split(' ').map((n) => n[0]).join('')}</span>
+                      <span className="font-medium">{to}</span>
+                      <button onClick={() => { setTo(''); setJustSent(false); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-text hover:text-red-600"><X size={14} /></button>
+                    </div>
+                  ) : (
+                    <>
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-text" size={14} />
+                      <input
+                        type="text"
+                        value={recipientSearch}
+                        onChange={(e) => { setRecipientSearch(e.target.value); setJustSent(false); }}
+                        placeholder="Search employees..."
+                        className="w-full border border-border rounded-[4px] pl-9 pr-4 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary-action"
+                      />
+                    </>
+                  )}
                 </div>
+                {!to && recipientMatches.length > 0 && (
+                  <div className="absolute z-20 top-full mt-1 w-full bg-white border border-border rounded-[4px] shadow-lg max-h-52 overflow-y-auto">
+                    {recipientMatches.map((e) => (
+                      <button key={e.id} onClick={() => { setTo(e.name); setRecipientSearch(''); }} className="w-full flex items-center gap-2 p-2 hover:bg-gray-50 text-left">
+                        <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-bold">{e.avatar}</span>
+                        <span className="text-[13px] font-medium">{e.name}</span>
+                        <span className="text-[11px] text-muted-text">{e.role}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {!to && recipientSearch.trim() && recipientMatches.length === 0 && (
+                  <p className="text-[11px] text-muted-text">No employees match "{recipientSearch}".</p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -1650,18 +1709,61 @@ const FeedbackView = () => {
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <label className="text-[12px] font-bold">Message:</label>
-                  <span className="text-[10px] text-muted-text">0 / 400</span>
+                  <span className={cn("text-[10px]", message.length >= 400 ? "text-red-600 font-bold" : "text-muted-text")}>{message.length} / 400</span>
                 </div>
-                <textarea 
-                  placeholder="Share your feedback..." 
+                <textarea
+                  value={message}
+                  onChange={(e) => { setMessage(e.target.value); setJustSent(false); }}
+                  placeholder="Share your feedback..."
                   className="w-full border border-border rounded-[4px] p-3 text-[13px] min-h-[120px] focus:outline-none focus:ring-1 focus:ring-primary-action"
                   maxLength={400}
                 />
               </div>
 
-              <button className="btn-primary w-full py-2.5">Submit Feedback</button>
+              <button
+                onClick={submitFeedback}
+                disabled={!to || !message.trim()}
+                className="btn-primary w-full py-2.5 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {to ? `Send ${feedbackType} feedback to ${to}` : 'Submit Feedback'}
+              </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {activeTab === 'Sent' && (
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-[14px] font-bold">Feedback You've Sent</h3>
+            <p className="text-[12px] text-muted-text">Feedback you've shared with colleagues.</p>
+          </div>
+          {sent.length === 0 ? (
+            <div className="card text-center py-10 space-y-2">
+              <MessageSquare size={22} className="mx-auto text-muted-text" />
+              <p className="text-[13px] text-muted-text">You haven't sent any feedback yet.</p>
+              <button onClick={() => setActiveTab('Give Feedback')} className="text-primary-action text-[12px] font-medium hover:underline">Give feedback →</button>
+            </div>
+          ) : (
+            <div className="card p-0 overflow-hidden">
+              {sent.map((f) => (
+                <div key={f.id} className="flex items-start gap-3 p-4 border-b border-border last:border-0">
+                  <span className="text-[18px]">{typeIcon[f.type] || '💬'}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="font-bold text-[13px]">To {f.to}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[9px] uppercase tracking-wider bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded">{f.type}</span>
+                        <span className="text-[9px] uppercase tracking-wider bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{f.visibility}</span>
+                        <span className="text-[10px] text-muted-text">{f.date}</span>
+                      </div>
+                    </div>
+                    <p className="text-[12.5px] text-muted-text mt-1">{f.message}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -1786,8 +1888,95 @@ const FeedbackView = () => {
   );
 };
 const Dashboard = ({ setActiveView }: { setActiveView: (view: string) => void }) => {
+  const deadlines = [
+    { label: 'Submit Self-Review', days: 14, icon: <ClipboardList size={14} />, view: 'SelfAssessment' },
+    { label: 'Q1 Goal Alignment', days: 3, icon: <Target size={14} />, urgent: true, view: 'Practice Goals' },
+    { label: 'Quarterly Goal Review', days: 22, icon: <Users size={14} />, view: 'Team Goals' },
+  ];
+
+  const dashCtx: DashboardContext = {
+    role: 'manager',
+    goalsOnTrack: '8/12',
+    reviewsPending: 3,
+    feedbackReceived: 14,
+    cycleStage: 'Individual Goals (68%)',
+    deadlines: deadlines.map((d) => ({ label: d.label, days: d.days, urgent: d.urgent })),
+    teamReviews: [{ name: 'Sarah Chen', status: 'Submitted' }, { name: 'Alex Reid', status: 'In Progress' }],
+    recentFeedback: FEEDBACK.map((f) => ({ from: f.from, text: f.text })),
+  };
+  const topDeadline = [...deadlines].sort((a, b) => a.days - b.days)[0];
+
+  const [briefing, setBriefing] = useState<Briefing | null>(null);
+  const [briefingLoading, setBriefingLoading] = useState(true);
+
+  const loadBriefing = async () => {
+    setBriefingLoading(true);
+    try {
+      setBriefing(await generateBriefing(dashCtx));
+    } finally {
+      setBriefingLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadBriefing();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="space-y-6">
+      {/* AI Daily Briefing */}
+      <div className="card bg-gradient-to-br from-indigo-50 to-white border-indigo-200 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-full bg-primary-action flex items-center justify-center"><Sparkles size={14} className="text-white" /></div>
+            <h3 className="font-bold text-[14px]">Your Daily Briefing</h3>
+            {briefing?.isMock && <span className="text-[10px] text-muted-text">(AI not configured — heuristic)</span>}
+          </div>
+          <button onClick={loadBriefing} disabled={briefingLoading} className="text-[11px] font-medium text-primary-action hover:underline flex items-center gap-1 disabled:opacity-50">
+            <RefreshCw size={11} className={cn(briefingLoading && 'animate-spin')} /> Refresh
+          </button>
+        </div>
+
+        {briefingLoading && !briefing ? (
+          <div className="space-y-2 animate-pulse">
+            <div className="h-3 bg-indigo-100 rounded w-1/2" />
+            <div className="h-3 bg-indigo-100 rounded w-3/4" />
+          </div>
+        ) : briefing ? (
+          <>
+            <p className="text-[14px] font-bold text-primary-text">{briefing.headline}</p>
+            <p className="text-[12.5px] text-muted-text leading-relaxed">{briefing.summary}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {briefing.highlights.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[11px] font-bold text-green-700 flex items-center gap-1"><CheckCircle2 size={11} /> On track</p>
+                  <ul className="space-y-0.5">
+                    {briefing.highlights.map((h, i) => <li key={i} className="text-[12px] text-primary-text flex gap-1.5"><span className="text-green-600">•</span>{h}</li>)}
+                  </ul>
+                </div>
+              )}
+              {briefing.risks.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-[11px] font-bold text-amber-700 flex items-center gap-1"><AlertTriangle size={11} /> Needs attention</p>
+                  <ul className="space-y-0.5">
+                    {briefing.risks.map((r, i) => <li key={i} className="text-[12px] text-primary-text flex gap-1.5"><span className="text-amber-600">•</span>{r}</li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-indigo-200 flex-wrap">
+              <p className="text-[12px]"><span className="font-bold text-primary-action">Next: </span>{briefing.nextAction}</p>
+              {topDeadline && (
+                <button onClick={() => setActiveView(topDeadline.view)} className="btn-primary py-1.5 text-[12px] flex items-center gap-1.5">
+                  Go to {topDeadline.label} <ArrowUpRight size={13} />
+                </button>
+              )}
+            </div>
+          </>
+        ) : null}
+      </div>
+
       {/* Cycle Status Bar */}
       <div className="card py-3 px-6">
         <div className="flex items-center justify-between text-[11px] font-medium uppercase tracking-wider text-muted-text overflow-x-auto gap-4">
@@ -1930,14 +2119,10 @@ const Dashboard = ({ setActiveView }: { setActiveView: (view: string) => void })
           <div className="space-y-4">
             <h3 className="font-semibold text-[14px]">Upcoming Deadlines</h3>
             <div className="space-y-2">
-              {[
-                { label: 'Submit Self-Review', days: 14, icon: <ClipboardList size={14} />, action: () => setActiveView('SelfAssessment') },
-                { label: 'Q1 Goal Alignment', days: 3, icon: <Target size={14} />, urgent: true, action: () => setActiveView('Practice Goals') },
-                { label: 'Quarterly Goal Review', days: 22, icon: <Users size={14} />, action: () => setActiveView('Team Goals') },
-              ].map((item, i) => (
-                <button 
-                  key={i} 
-                  onClick={item.action}
+              {deadlines.map((item, i) => (
+                <button
+                  key={i}
+                  onClick={() => setActiveView(item.view)}
                   className="card flex items-center justify-between py-2 px-3 w-full hover:bg-gray-50 transition-all text-left"
                 >
                   <div className="flex items-center gap-3">
@@ -2657,6 +2842,7 @@ const ManagerReviewView = ({
   // Review Writer state
   const [goalRatings, setGoalRatings] = useState<Record<number, string>>({});
   const [goalComments, setGoalComments] = useState<Record<number, string>>({});
+  const [goalProposals, setGoalProposals] = useState<Record<number, GoalReviewDraft>>({});
   const [overall, setOverall] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [goalLoading, setGoalLoading] = useState<number | null>(null);
@@ -2664,8 +2850,14 @@ const ManagerReviewView = ({
 
   const applyGoal = (i: number, g: GoalReviewDraft) => {
     setGoalRatings((p) => ({ ...p, [i]: g.suggestedRating }));
-    setGoalComments((p) => ({ ...p, [i]: g.comment }));
+    setGoalProposals((p) => ({ ...p, [i]: g }));
   };
+
+  const ratingPill = (r: string) =>
+    r === 'Exceeded' ? 'bg-green-100 text-green-700'
+    : r === 'Met' ? 'bg-emerald-100 text-emerald-700'
+    : r === 'Partial' ? 'bg-amber-100 text-amber-700'
+    : 'bg-red-100 text-red-700';
 
   const handleDraftAll = async () => {
     if (aiLoading) return;
@@ -2855,6 +3047,22 @@ const ManagerReviewView = ({
                           </button>
                         ))}
                       </div>
+
+                      {/* AI proposed rating + rationale */}
+                      {goalProposals[i] && (
+                        <div className="border border-indigo-200 bg-indigo-50/60 rounded-[3px] p-2.5 space-y-1.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5">
+                              <Sparkles size={11} className="text-indigo-600" />
+                              <span className="text-[11px] font-bold text-indigo-900">AI proposed rating</span>
+                              <span className={cn("text-[10px] font-bold px-1.5 py-0.5 rounded", ratingPill(goalProposals[i].suggestedRating))}>{goalProposals[i].suggestedRating}</span>
+                            </div>
+                            <button onClick={() => setGoalComments((p) => ({ ...p, [i]: goalProposals[i].comment }))} className="text-[10px] font-bold text-primary-action hover:underline whitespace-nowrap">Use as comment</button>
+                          </div>
+                          <p className="text-[11px] text-indigo-900 leading-relaxed"><span className="font-bold">Rationale: </span>{goalProposals[i].comment}</p>
+                        </div>
+                      )}
+
                       <textarea
                         value={goalComments[i] || ''}
                         onChange={(e) => setGoalComments((p) => ({ ...p, [i]: e.target.value }))}
