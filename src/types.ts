@@ -132,6 +132,11 @@ export interface Employee {
   flightRisk?: 'Low' | 'Medium' | 'High';
   potential?: string;
   nineBoxLabel?: string;
+  /** Performance KPIs shown on the review drill-down */
+  salesRevenue?: number;        // USD
+  timesheetCompliance?: number; // %
+  utilization?: number;         // %
+  trainingCompliance?: number;  // %
 }
 
 export interface ReviewCycle {

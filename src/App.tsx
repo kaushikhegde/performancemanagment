@@ -114,6 +114,9 @@ import {
 } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from './lib/utils';
+import { draftGoal, scoreAlignment, type AlignmentResult } from './lib/goalCoach';
+import { summarizeCoverage, draftReviewComment } from './lib/teamGoalsCoach';
+import { draftReview, draftGoalComment, type ReviewContext, type GoalReviewDraft, type ManagerReviewDraft } from './lib/reviewWriter';
 import { EMPLOYEES, COMPANY_GOALS, REVIEW_CYCLES, FEEDBACK, MY_GOALS, GOAL_TYPES, SCYNE_VALUES, GOAL_VISIBILITY_OPTIONS, PROGRESS_STATUSES, SKILLS_PASSPORT, D365_IMPORT_GOALS, ROLE_PROFILES, COMPETENCIES, FEEDBACK_REQUESTS, REMINDER_SCHEDULE, NOTIFICATIONS, TASKS, FEEDBACK_THEMES, CHECK_IN_LOG, GRADE_EXPECTATIONS } from './data/mockData';
 import { Status, Goal, CheckIn } from './types';
 
@@ -2623,7 +2626,65 @@ const ManagerReviewView = ({
   openChatbot: (trigger: string) => void
 }) => {
   const [activeTab, setActiveTab] = useState('Evaluation');
-  
+
+  // Goals under evaluation (grounding data for the Review Writer)
+  const EVAL_GOALS = [
+    { title: 'Grow ARR to $50M by EOY', weight: 25, progress: 100, selfRating: 'Exceeded' },
+    { title: 'Launch Enterprise Tier', weight: 25, progress: 85, selfRating: 'Exceeded' },
+  ];
+  const reviewCtx: ReviewContext = {
+    employeeName: 'Sarah Chen',
+    role: 'Senior Product Manager',
+    tenure: '2.5 years',
+    lastRating: '4.2 (Strong)',
+    goalProgress: '92% complete',
+    goals: EVAL_GOALS.map((g) => ({ title: g.title, progress: g.progress, selfRating: g.selfRating })),
+    selfSummary: "This year has been transformative. I'm proud of how the team rallied around the Enterprise launch. Moving forward, I want to focus more on long-term product strategy and mentoring junior PMs.",
+    recentFeedback: [
+      { from: 'Alex Reid', text: 'Sarah did an amazing job leading the Q3 planning session.' },
+      { from: 'Direct Report', text: 'Great mentor, always provides clear direction.' },
+    ],
+  };
+
+  // Review Writer state
+  const [goalRatings, setGoalRatings] = useState<Record<number, string>>({});
+  const [goalComments, setGoalComments] = useState<Record<number, string>>({});
+  const [overall, setOverall] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [goalLoading, setGoalLoading] = useState<number | null>(null);
+  const [draftMeta, setDraftMeta] = useState<ManagerReviewDraft | null>(null);
+
+  const applyGoal = (i: number, g: GoalReviewDraft) => {
+    setGoalRatings((p) => ({ ...p, [i]: g.suggestedRating }));
+    setGoalComments((p) => ({ ...p, [i]: g.comment }));
+  };
+
+  const handleDraftAll = async () => {
+    if (aiLoading) return;
+    setAiLoading(true);
+    try {
+      const d = await draftReview(reviewCtx);
+      setDraftMeta(d);
+      setOverall(d.overallSummary);
+      d.goals.forEach((gd) => {
+        const idx = EVAL_GOALS.findIndex((g) => g.title === gd.title);
+        if (idx >= 0) applyGoal(idx, gd);
+      });
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleDraftGoal = async (i: number) => {
+    if (goalLoading !== null) return;
+    setGoalLoading(i);
+    try {
+      applyGoal(i, await draftGoalComment(reviewCtx, EVAL_GOALS[i].title));
+    } finally {
+      setGoalLoading(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -2664,6 +2725,33 @@ const ManagerReviewView = ({
                 </div>
               </div>
             </div>
+
+            {/* Performance KPIs (#per-employee review metrics) */}
+            {(() => {
+              const emp = EMPLOYEES.find((e) => e.name === reviewCtx.employeeName);
+              const fmtUSD = (n: number) => n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(2)}M` : n >= 1_000 ? `$${(n / 1_000).toFixed(0)}K` : `$${n}`;
+              const pct = (n?: number) => n == null ? '—' : `${n}%`;
+              const tone = (n?: number) => n == null ? 'text-primary-text' : n >= 90 ? 'text-green-600' : n >= 75 ? 'text-amber-600' : 'text-red-600';
+              const kpis = [
+                { label: 'Sales Revenue', value: emp ? fmtUSD(emp.salesRevenue || 0) : '—', icon: <TrendingUp size={14} />, cls: 'text-primary-text' },
+                { label: 'Timesheet Compliance', value: pct(emp?.timesheetCompliance), icon: <Clock size={14} />, cls: tone(emp?.timesheetCompliance) },
+                { label: 'Utilization', value: pct(emp?.utilization), icon: <BarChart3 size={14} />, cls: tone(emp?.utilization) },
+                { label: 'Training Compliance', value: pct(emp?.trainingCompliance), icon: <Award size={14} />, cls: tone(emp?.trainingCompliance) },
+              ];
+              return (
+                <div className="grid grid-cols-2 gap-3">
+                  {kpis.map((k) => (
+                    <div key={k.label} className="card space-y-1 py-3">
+                      <div className="flex items-center gap-1.5 text-muted-text">
+                        <span className="text-primary-action">{k.icon}</span>
+                        <span className="text-[10px] uppercase font-bold tracking-wide">{k.label}</span>
+                      </div>
+                      <div className={cn("text-[18px] font-bold", k.cls)}>{k.value}</div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
 
             <div className="card-review space-y-4">
               <h4 className="text-[13px] font-bold flex items-center gap-2">
@@ -2732,32 +2820,39 @@ const ManagerReviewView = ({
               <div className="space-y-8">
                 <div className="space-y-6">
                   <h4 className="text-[14px] font-bold border-b border-border pb-2">Goal Evaluation</h4>
-                  {[
-                    { title: 'Grow ARR to $50M by EOY', weight: 25 },
-                    { title: 'Launch Enterprise Tier', weight: 25 },
-                  ].map((goal, i) => (
+                  {EVAL_GOALS.map((goal, i) => (
                     <div key={i} className="space-y-3">
                       <div className="flex justify-between items-center mb-1">
                         <h5 className="text-[13px] font-bold">{goal.title}</h5>
-                        <button 
-                          onClick={() => openChatbot('MANAGER_EVALUATION')}
-                          className="p-1 text-indigo-600 hover:bg-indigo-50 rounded transition-colors"
+                        <button
+                          onClick={() => handleDraftGoal(i)}
+                          disabled={goalLoading === i}
+                          title="Draft this goal's rating & comment with AI"
+                          className="p-1 text-indigo-600 hover:bg-indigo-50 rounded transition-colors disabled:opacity-50"
                         >
-                          <Sparkles size={14} />
+                          {goalLoading === i ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
                         </button>
                       </div>
                       <div className="grid grid-cols-4 gap-1">
                         {['Not Met', 'Partial', 'Met', 'Exceeded'].map(r => (
-                          <button key={r} className="py-1.5 text-[10px] font-bold border border-border rounded-[2px] hover:border-primary-action hover:text-primary-action transition-all">
+                          <button
+                            key={r}
+                            onClick={() => setGoalRatings((p) => ({ ...p, [i]: r }))}
+                            className={cn(
+                              "py-1.5 text-[10px] font-bold border rounded-[2px] transition-all",
+                              goalRatings[i] === r ? "border-primary-action bg-indigo-50 text-primary-action" : "border-border hover:border-primary-action hover:text-primary-action"
+                            )}
+                          >
                             {r}
                           </button>
                         ))}
                       </div>
-                      <textarea 
-                        data-field={`goal-${i}`}
-                        placeholder="Manager commentary..." 
-                        className="w-full border border-border rounded-[2px] p-2 text-[12px] focus:outline-none focus:ring-1 focus:ring-primary-action" 
-                        rows={2} 
+                      <textarea
+                        value={goalComments[i] || ''}
+                        onChange={(e) => setGoalComments((p) => ({ ...p, [i]: e.target.value }))}
+                        placeholder="Manager commentary..."
+                        className="w-full border border-border rounded-[2px] p-2 text-[12px] focus:outline-none focus:ring-1 focus:ring-primary-action"
+                        rows={2}
                       />
                     </div>
                   ))}
@@ -2782,16 +2877,47 @@ const ManagerReviewView = ({
                 <div className="space-y-4 pt-4">
                   <div className="flex justify-between items-center">
                     <h4 className="text-[14px] font-bold uppercase tracking-wider text-muted-text">Overall Feedback</h4>
-                    <button 
-                      onClick={() => openChatbot('MANAGER_EVALUATION')}
-                      className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded hover:bg-indigo-100 transition-all"
+                    <button
+                      onClick={handleDraftAll}
+                      disabled={aiLoading}
+                      className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded hover:bg-indigo-100 transition-all disabled:opacity-50"
                     >
-                      <Sparkles size={12} />
-                      AI Writing Assistant
+                      {aiLoading ? <RefreshCw size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                      {aiLoading ? 'Drafting…' : 'AI Writing Assistant'}
                     </button>
                   </div>
-                  <textarea 
-                    data-field="overall-feedback"
+
+                  {draftMeta && (
+                    <div className="border border-indigo-200 bg-indigo-50/60 rounded-[4px] p-3 space-y-2 text-[12px]">
+                      <div className="flex items-center gap-2">
+                        <Sparkles size={12} className="text-indigo-600" />
+                        <span className="font-bold">Suggested rating:</span>
+                        <span className="text-primary-action font-bold">{draftMeta.suggestedOverallRating}</span>
+                        {draftMeta.isMock && <span className="text-[10px] text-muted-text">(AI not configured — heuristic)</span>}
+                      </div>
+                      {draftMeta.strengths.length > 0 && (
+                        <p><span className="font-bold">Strengths:</span> {draftMeta.strengths.join(', ')}</p>
+                      )}
+                      {draftMeta.developmentAreas.length > 0 && (
+                        <p><span className="font-bold">Development:</span> {draftMeta.developmentAreas.join(', ')}</p>
+                      )}
+                      {draftMeta.biasFlags.length > 0 ? (
+                        <div className="border-t border-indigo-200 pt-2 space-y-1">
+                          <p className="font-bold text-amber-700 flex items-center gap-1"><AlertTriangle size={11} /> Bias / tone flags</p>
+                          {draftMeta.biasFlags.map((b, k) => (
+                            <p key={k} className="text-[11px]"><span className="line-through text-muted-text">{b.phrase}</span> → {b.suggestion}</p>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-green-700 flex items-center gap-1 border-t border-indigo-200 pt-2"><CheckCircle2 size={11} /> No biased or vague language detected.</p>
+                      )}
+                      <p className="text-[10px] text-muted-text pt-1">Review-writer suggestions — edit freely before submitting. You own the final rating.</p>
+                    </div>
+                  )}
+
+                  <textarea
+                    value={overall}
+                    onChange={(e) => setOverall(e.target.value)}
                     rows={6}
                     placeholder="Provide a comprehensive summary of performance, key strengths, and areas for development..."
                     className="w-full border border-border rounded-[4px] p-4 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary-action leading-relaxed"
@@ -3018,13 +3144,55 @@ const SkillsPassportManager = () => {
 
 // --- Goal Creation Drawer (REQ1 #482, #485, #486, #484, #487, #490) ---
 const GoalCreationDrawer = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [targetDate, setTargetDate] = useState('');
   const [types, setTypes] = useState<string[]>([]);
   const [values, setValues] = useState<string[]>([]);
   const [practiceGoals, setPracticeGoals] = useState<string[]>([]);
   const [milestones, setMilestones] = useState<{ description: string; targetDate: string }[]>([]);
 
+  // Goal Coach ("Draft with AI") state
+  const [aiIntent, setAiIntent] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiFilled, setAiFilled] = useState(false); // true once a draft has pre-filled the form
+  const [aiMock, setAiMock] = useState(false);      // draft came from the local fallback
+
+  // Phase 2: alignment scoring state
+  const [alignLoading, setAlignLoading] = useState(false);
+  const [alignResults, setAlignResults] = useState<AlignmentResult[] | null>(null);
+
   const toggle = (setter: React.Dispatch<React.SetStateAction<string[]>>) => (v: string) =>
     setter((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
+
+  const handleCheckAlignment = async () => {
+    if (alignLoading || (!title.trim() && !description.trim())) return;
+    setAlignLoading(true);
+    try {
+      setAlignResults(await scoreAlignment(title, description));
+    } finally {
+      setAlignLoading(false);
+    }
+  };
+
+  const handleDraft = async () => {
+    if (!aiIntent.trim() || aiLoading) return;
+    setAiLoading(true);
+    try {
+      const draft = await draftGoal(aiIntent);
+      setTitle(draft.title);
+      setDescription(draft.description);
+      setTargetDate(draft.targetDate);
+      setTypes(draft.goalTypes);
+      setPracticeGoals(draft.practiceGoals);
+      setValues(draft.scyneValues);
+      setMilestones(draft.milestones);
+      setAiFilled(true);
+      setAiMock(!!draft.isMock);
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   return (
     <AnimatePresence>
@@ -3042,19 +3210,48 @@ const GoalCreationDrawer = ({ open, onClose }: { open: boolean; onClose: () => v
             </div>
 
             <div className="flex-1 overflow-y-auto p-5 space-y-6">
+              {/* Goal Coach — draft with AI (Phase 1) */}
+              <div className="border border-indigo-200 bg-indigo-50/60 rounded-[6px] p-3 space-y-2">
+                <label className="text-[12px] font-bold flex items-center gap-1.5 text-indigo-900"><Sparkles size={13} /> Draft with AI</label>
+                <p className="text-[11px] text-indigo-900/70">Describe your goal in a sentence and Goal Coach will draft the title, milestones and alignment for you to review.</p>
+                <textarea
+                  rows={2}
+                  value={aiIntent}
+                  onChange={(e) => setAiIntent(e.target.value)}
+                  placeholder="e.g. Get better at leading cross-team product launches"
+                  className="w-full border border-indigo-200 rounded-[4px] px-3 py-2 text-[13px] bg-white focus:outline-none focus:ring-1 focus:ring-primary-action"
+                />
+                <button
+                  onClick={handleDraft}
+                  disabled={!aiIntent.trim() || aiLoading}
+                  className="btn-primary w-full flex items-center justify-center gap-2 py-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {aiLoading ? <RefreshCw size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                  {aiLoading ? 'Drafting…' : aiFilled ? 'Re-draft' : 'Draft goal'}
+                </button>
+                {aiFilled && (
+                  <p className="text-[11px] text-indigo-900/80 flex items-start gap-1.5">
+                    <Info size={12} className="flex-shrink-0 mt-0.5" />
+                    {aiMock
+                      ? 'AI is not configured — showing a starter draft. Fields below are editable.'
+                      : 'AI filled the fields below — review and edit before submitting.'}
+                  </p>
+                )}
+              </div>
+
               {/* Basics */}
               <div className="space-y-3">
                 <div className="space-y-1">
                   <label className="text-[12px] font-medium">Goal Title</label>
-                  <input type="text" placeholder="e.g. Launch new API documentation" className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
+                  <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Launch new API documentation" className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[12px] font-medium">Description</label>
-                  <textarea rows={3} placeholder="A clear and concise description of the goal" className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
+                  <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="A clear and concise description of the goal" className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[12px] font-medium">Target Completion Date</label>
-                  <input type="date" className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
+                  <input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} className="w-full border border-border rounded-[4px] px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
                 </div>
               </div>
 
@@ -3071,8 +3268,47 @@ const GoalCreationDrawer = ({ open, onClose }: { open: boolean; onClose: () => v
                   <p className="text-[11px] text-muted-text mt-0.5">Align this goal to one or more Practice Goals and/or Scyne Values. Linking to both is not required.</p>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[12px] font-medium flex items-center gap-1.5"><Building2 size={12} /> Practice Goals <span className="text-muted-text font-normal">(optional)</span></label>
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-[12px] font-medium flex items-center gap-1.5"><Building2 size={12} /> Practice Goals <span className="text-muted-text font-normal">(optional)</span></label>
+                    <button
+                      onClick={handleCheckAlignment}
+                      disabled={alignLoading || (!title.trim() && !description.trim())}
+                      title={!title.trim() && !description.trim() ? 'Add a title or description first' : 'Score alignment with AI'}
+                      className="text-[11px] font-medium text-primary-action hover:underline flex items-center gap-1 disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed"
+                    >
+                      {alignLoading ? <RefreshCw size={11} className="animate-spin" /> : <Sparkles size={11} />}
+                      {alignLoading ? 'Scoring…' : 'Check alignment'}
+                    </button>
+                  </div>
                   <ChipMultiSelect options={COMPANY_GOALS.map((g) => g.title)} selected={practiceGoals} onToggle={toggle(setPracticeGoals)} />
+                  {alignResults && (
+                    <div className="space-y-1.5 pt-1">
+                      <p className="text-[11px] text-muted-text flex items-center gap-1"><Sparkles size={10} /> AI alignment — tap a suggestion to link it{alignResults[0]?.isMock ? ' (AI not configured — keyword estimate)' : ''}</p>
+                      {alignResults.slice(0, 3).map((r) => {
+                        const linked = practiceGoals.includes(r.practiceGoalTitle);
+                        return (
+                          <button
+                            key={r.practiceGoalId}
+                            onClick={() => toggle(setPracticeGoals)(r.practiceGoalTitle)}
+                            className={cn(
+                              "w-full text-left border rounded-[4px] p-2 flex items-start gap-2 transition-colors",
+                              linked ? "border-primary-action bg-indigo-50" : "border-border hover:bg-gray-50"
+                            )}
+                          >
+                            <Badge status={r.band} />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-[12px] font-medium truncate">{r.practiceGoalTitle}</span>
+                                <span className="text-[11px] text-muted-text whitespace-nowrap">{r.score}%</span>
+                              </div>
+                              <p className="text-[11px] text-muted-text">{r.rationale}</p>
+                            </div>
+                            {linked ? <Check size={13} className="text-primary-action flex-shrink-0 mt-0.5" /> : <Plus size={13} className="text-muted-text flex-shrink-0 mt-0.5" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[12px] font-medium flex items-center gap-1.5"><Tag size={12} /> Scyne Values <span className="text-muted-text font-normal">(optional)</span></label>
@@ -3481,6 +3717,35 @@ const TeamGoalsView = () => {
   const [reviewStatus, setReviewStatus] = useState<Record<string, Status>>({ g1: 'Pending Approval', g2: 'Pending Approval', g3: 'Pending Approval' });
   const [commentFor, setCommentFor] = useState<string | null>(null);
   const [commentText, setCommentText] = useState('');
+  // Phase 3: AI coverage summary + comment drafting
+  const [coverageSummary, setCoverageSummary] = useState<{ text: string; isMock?: boolean } | null>(null);
+  const [coverageLoading, setCoverageLoading] = useState(false);
+  const [commentDrafting, setCommentDrafting] = useState(false);
+
+  const coverageRows = COMPANY_GOALS.map((g, i) => ({ title: g.title, members: i + 2, status: i % 2 === 0 ? 'Aligned' : 'Partial' }));
+
+  const handleSummarizeCoverage = async () => {
+    if (coverageLoading) return;
+    setCoverageLoading(true);
+    try {
+      setCoverageSummary(await summarizeCoverage(coverageRows));
+    } finally {
+      setCoverageLoading(false);
+    }
+  };
+
+  const handleDraftComment = async (goalTitle: string, progress: number) => {
+    if (commentDrafting) return;
+    setCommentDrafting(true);
+    try {
+      const status = commentFor ? reviewStatus[commentFor] : undefined;
+      const action = (status === 'Approved' || status === 'Rejected' || status === 'Changes Requested') ? status : 'Changes Requested';
+      const res = await draftReviewComment({ goalTitle, progress, action, employeeName: selectedMember.name });
+      setCommentText(res.text);
+    } finally {
+      setCommentDrafting(false);
+    }
+  };
   // Audit trail of comments & actions (#483)
   const [auditTrail, setAuditTrail] = useState([
     { id: 'a1', by: 'Alex Reid', role: 'Team Leader', date: '2026-06-11 10:05', text: 'Strong alignment to the mobile platform goal. Approving.', action: 'Approved', goal: 'Launch new API documentation portal' },
@@ -3511,7 +3776,23 @@ const TeamGoalsView = () => {
       </div>
 
       <div className="card space-y-4">
-        <h3 className="font-semibold text-[14px]">Practice Goal Coverage — Your Team</h3>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="font-semibold text-[14px]">Practice Goal Coverage — Your Team</h3>
+          <button
+            onClick={handleSummarizeCoverage}
+            disabled={coverageLoading}
+            className="text-[12px] font-medium text-primary-action hover:underline flex items-center gap-1.5 disabled:opacity-50"
+          >
+            {coverageLoading ? <RefreshCw size={12} className="animate-spin" /> : <Sparkles size={12} />}
+            {coverageLoading ? 'Summarizing…' : 'Summarize coverage'}
+          </button>
+        </div>
+        {coverageSummary && (
+          <div className="bg-indigo-50 border border-indigo-100 rounded-[4px] p-3 flex items-start gap-2 text-indigo-900">
+            <Sparkles size={13} className="flex-shrink-0 mt-0.5" />
+            <p className="text-[12px]">{coverageSummary.text}{coverageSummary.isMock ? ' (AI not configured — heuristic summary.)' : ''}</p>
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
@@ -3599,6 +3880,9 @@ const TeamGoalsView = () => {
                 {commentFor === goal.id && (
                   <div className="flex items-center gap-2 mt-2">
                     <input value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="Add a comment for the employee…" className="flex-1 border border-border rounded-[4px] px-2 py-1.5 text-[12px] focus:outline-none focus:ring-1 focus:ring-primary-action" />
+                    <button onClick={() => handleDraftComment(goal.title, goal.progress)} disabled={commentDrafting} title="Draft with AI" className="p-1.5 rounded border border-indigo-200 text-primary-action hover:bg-indigo-50 disabled:opacity-50">
+                      {commentDrafting ? <RefreshCw size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                    </button>
                     <button onClick={() => submitComment(goal.title)} className="btn-primary py-1.5"><Send size={13} /></button>
                   </div>
                 )}

@@ -1,13 +1,13 @@
 import { Employee, Goal, ReviewCycle, Feedback, RoleProfile, FeedbackRequest, CheckIn, GradeExpectation } from '../types';
 
 export const EMPLOYEES: Employee[] = [
-  { id: '1', name: 'Sarah Chen', role: 'Product Manager', department: 'Product', managerId: '10', reviewScore: 4.2, goalsDone: 6, totalGoals: 8, alignment: 'Aligned', avatar: 'SC', tenure: '3 yrs 2 mo', flightRisk: 'Low', nineBoxLabel: 'STAR ⭐' },
-  { id: '2', name: 'Ben Scyne', role: 'Sr Engineer', department: 'Engineering', managerId: '11', reviewScore: 3.8, goalsDone: 4, totalGoals: 6, alignment: 'Partial', avatar: 'BS', tenure: '2 yrs 1 mo', flightRisk: 'Medium', nineBoxLabel: 'CORE PLAYER' },
-  { id: '3', name: 'Yash Thakur', role: 'Sales Lead', department: 'Sales', managerId: '10', reviewScore: 4.5, goalsDone: 7, totalGoals: 7, alignment: 'Aligned', avatar: 'YT', tenure: '4 yrs', flightRisk: 'Low', nineBoxLabel: 'HIGH POTENTIAL' },
-  { id: '4', name: 'Divya G', role: 'Marketing Analyst', department: 'Marketing', managerId: '11', reviewScore: 3.6, goalsDone: 3, totalGoals: 5, alignment: 'Partial', avatar: 'DG', tenure: '1 yr 6 mo', flightRisk: 'Low', nineBoxLabel: 'CORE PLAYER' },
-  { id: '5', name: 'Nik Maniya', role: 'Product Lead', department: 'Product', managerId: '10', reviewScore: 4.8, goalsDone: 8, totalGoals: 8, alignment: 'Aligned', avatar: 'NM', tenure: '5 yrs', flightRisk: 'Low', nineBoxLabel: 'STAR ⭐' },
-  { id: '6', name: 'Alex Reid', role: 'Director of Product', department: 'Product', reviewScore: 4.4, goalsDone: 5, totalGoals: 5, alignment: 'Aligned', avatar: 'AR' },
-  { id: '7', name: 'Priya B', role: 'Engineering Manager', department: 'Engineering', reviewScore: 4.1, goalsDone: 6, totalGoals: 7, alignment: 'Aligned', avatar: 'PB' },
+  { id: '1', name: 'Sarah Chen', role: 'Product Manager', department: 'Product', managerId: '10', reviewScore: 4.2, goalsDone: 6, totalGoals: 8, alignment: 'Aligned', avatar: 'SC', tenure: '3 yrs 2 mo', flightRisk: 'Low', nineBoxLabel: 'STAR ⭐', salesRevenue: 2450000, timesheetCompliance: 98, utilization: 87, trainingCompliance: 100 },
+  { id: '2', name: 'Ben Scyne', role: 'Sr Engineer', department: 'Engineering', managerId: '11', reviewScore: 3.8, goalsDone: 4, totalGoals: 6, alignment: 'Partial', avatar: 'BS', tenure: '2 yrs 1 mo', flightRisk: 'Medium', nineBoxLabel: 'CORE PLAYER', salesRevenue: 0, timesheetCompliance: 82, utilization: 74, trainingCompliance: 65 },
+  { id: '3', name: 'Yash Thakur', role: 'Sales Lead', department: 'Sales', managerId: '10', reviewScore: 4.5, goalsDone: 7, totalGoals: 7, alignment: 'Aligned', avatar: 'YT', tenure: '4 yrs', flightRisk: 'Low', nineBoxLabel: 'HIGH POTENTIAL', salesRevenue: 5120000, timesheetCompliance: 95, utilization: 91, trainingCompliance: 88 },
+  { id: '4', name: 'Divya G', role: 'Marketing Analyst', department: 'Marketing', managerId: '11', reviewScore: 3.6, goalsDone: 3, totalGoals: 5, alignment: 'Partial', avatar: 'DG', tenure: '1 yr 6 mo', flightRisk: 'Low', nineBoxLabel: 'CORE PLAYER', salesRevenue: 340000, timesheetCompliance: 90, utilization: 68, trainingCompliance: 72 },
+  { id: '5', name: 'Nik Maniya', role: 'Product Lead', department: 'Product', managerId: '10', reviewScore: 4.8, goalsDone: 8, totalGoals: 8, alignment: 'Aligned', avatar: 'NM', tenure: '5 yrs', flightRisk: 'Low', nineBoxLabel: 'STAR ⭐', salesRevenue: 3980000, timesheetCompliance: 99, utilization: 93, trainingCompliance: 100 },
+  { id: '6', name: 'Alex Reid', role: 'Director of Product', department: 'Product', reviewScore: 4.4, goalsDone: 5, totalGoals: 5, alignment: 'Aligned', avatar: 'AR', salesRevenue: 1750000, timesheetCompliance: 96, utilization: 80, trainingCompliance: 95 },
+  { id: '7', name: 'Priya B', role: 'Engineering Manager', department: 'Engineering', reviewScore: 4.1, goalsDone: 6, totalGoals: 7, alignment: 'Aligned', avatar: 'PB', salesRevenue: 0, timesheetCompliance: 94, utilization: 78, trainingCompliance: 90 },
 ];
 
 // Practice Goals — org-level goals that individual goals align to (formerly "Company Goals")
