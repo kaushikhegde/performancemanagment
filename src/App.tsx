@@ -119,6 +119,7 @@ import { summarizeCoverage, draftReviewComment } from './lib/teamGoalsCoach';
 import { draftReview, draftGoalComment, type ReviewContext, type GoalReviewDraft, type ManagerReviewDraft } from './lib/reviewWriter';
 import { summarizeCheckIns, type CheckInSummary } from './lib/checkInCoach';
 import { generateBriefing, type DashboardContext, type Briefing } from './lib/dashboardCoach';
+import { polishFeedback, type FeedbackPolish } from './lib/feedbackCoach';
 import { EMPLOYEES, COMPANY_GOALS, REVIEW_CYCLES, FEEDBACK, MY_GOALS, GOAL_TYPES, SCYNE_VALUES, GOAL_VISIBILITY_OPTIONS, PROGRESS_STATUSES, SKILLS_PASSPORT, D365_IMPORT_GOALS, ROLE_PROFILES, COMPETENCIES, FEEDBACK_REQUESTS, REMINDER_SCHEDULE, NOTIFICATIONS, TASKS, FEEDBACK_THEMES, CHECK_IN_LOG, GRADE_EXPECTATIONS } from './data/mockData';
 import { Status, Goal, CheckIn } from './types';
 
@@ -1498,6 +1499,20 @@ const FeedbackView = () => {
   const [justSent, setJustSent] = useState(false);
   const [sent, setSent] = useState<{ id: string; to: string; type: string; visibility: string; message: string; date: string }[]>([]);
 
+  // AI polish state
+  const [polishLoading, setPolishLoading] = useState(false);
+  const [polish, setPolish] = useState<FeedbackPolish | null>(null);
+
+  const handlePolish = async () => {
+    if (!message.trim() || polishLoading) return;
+    setPolishLoading(true);
+    try {
+      setPolish(await polishFeedback({ message, type: feedbackType, recipient: to || undefined }));
+    } finally {
+      setPolishLoading(false);
+    }
+  };
+
   const typeIcon: Record<string, string> = { Recognition: '🏆', Constructive: '🔧', General: '💬' };
   const recipientMatches = recipientSearch.trim()
     ? EMPLOYEES.filter((e) => e.name.toLowerCase().includes(recipientSearch.toLowerCase()))
@@ -1512,6 +1527,7 @@ const FeedbackView = () => {
     setMessage('');
     setTo('');
     setRecipientSearch('');
+    setPolish(null);
     setJustSent(true);
   };
 
@@ -1709,7 +1725,18 @@ const FeedbackView = () => {
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <label className="text-[12px] font-bold">Message:</label>
-                  <span className={cn("text-[10px]", message.length >= 400 ? "text-red-600 font-bold" : "text-muted-text")}>{message.length} / 400</span>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handlePolish}
+                      disabled={!message.trim() || polishLoading}
+                      title={!message.trim() ? 'Write a draft first' : 'Improve wording & check for bias with AI'}
+                      className="text-[11px] font-bold text-primary-action hover:underline flex items-center gap-1 disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed"
+                    >
+                      {polishLoading ? <RefreshCw size={11} className="animate-spin" /> : <Sparkles size={11} />}
+                      {polishLoading ? 'Polishing…' : 'Polish with AI'}
+                    </button>
+                    <span className={cn("text-[10px]", message.length >= 400 ? "text-red-600 font-bold" : "text-muted-text")}>{message.length} / 400</span>
+                  </div>
                 </div>
                 <textarea
                   value={message}
@@ -1718,6 +1745,29 @@ const FeedbackView = () => {
                   className="w-full border border-border rounded-[4px] p-3 text-[13px] min-h-[120px] focus:outline-none focus:ring-1 focus:ring-primary-action"
                   maxLength={400}
                 />
+
+                {polish && (
+                  <div className="border border-indigo-200 bg-indigo-50/60 rounded-[4px] p-3 space-y-2">
+                    <div className="flex items-center gap-1.5">
+                      <Sparkles size={12} className="text-indigo-600" />
+                      <span className="text-[12px] font-bold text-indigo-900">Suggested rewrite</span>
+                      {polish.isMock && <span className="text-[10px] text-muted-text">(AI not configured — heuristic)</span>}
+                    </div>
+                    <p className="text-[12.5px] text-indigo-900 leading-relaxed">{polish.polished}</p>
+                    {polish.biasFlags.length > 0 && (
+                      <div className="space-y-1 border-t border-indigo-200 pt-2">
+                        <p className="text-[11px] font-bold text-amber-700 flex items-center gap-1"><AlertTriangle size={11} /> Bias / tone flags</p>
+                        {polish.biasFlags.map((b, k) => (
+                          <p key={k} className="text-[11px] text-primary-text"><span className="line-through text-muted-text">{b.phrase}</span> → {b.suggestion}</p>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 pt-1">
+                      <button onClick={() => { setMessage(polish.polished); setPolish(null); }} className="btn-primary py-1 px-3 text-[11px]">Use this</button>
+                      <button onClick={() => setPolish(null)} className="btn-outline py-1 px-3 text-[11px]">Dismiss</button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <button
